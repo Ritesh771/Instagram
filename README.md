@@ -1,73 +1,129 @@
-# Welcome to your Lovable project
+# React Pics Share
 
-## Project info
+A full-stack social media application for sharing pictures, similar to Instagram. The project consists of a React-based web frontend, a Django REST API backend, and a React Native mobile app built with Expo.
 
-**URL**: https://lovable.dev/projects/4644b260-0ce4-47a4-bc5f-bf177abee9a8
+## Features
 
-## How can I edit this code?
+- User registration and authentication (including 2FA and biometric login)
+- Picture upload and sharing
+- Like/unlike posts
+- User profiles with bio and profile pictures
+- Password reset functionality
+- Responsive web interface
+- Mobile app for iOS and Android
 
-There are several ways of editing your application.
+## Developers
 
-**Use Lovable**
+- **Major Developer**: Ritesh N
+- **Minor Developer**: Pannaga
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/4644b260-0ce4-47a4-bc5f-bf177abee9a8) and start prompting.
+## Project Structure
 
-Changes made via Lovable will be committed automatically to this repo.
+- `backend/` - Django REST API server
+- `src/` - React web frontend
+- `expogo/` - React Native mobile app (Expo)
+- `public/` - Static assets for frontend
 
-**Use your preferred IDE**
+## Getting Started
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Prerequisites
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- Python 3.8+
+- Node.js 16+
+- Bun (recommended for package management)
+- Expo CLI (for mobile app)
 
-Follow these steps:
+### Backend Setup
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+1. Navigate to the backend directory:
+   ```
+   cd backend
+   ```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+2. Create a virtual environment and install dependencies:
+   ```
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
 
-# Step 3: Install the necessary dependencies.
-npm i
+3. Create environment file:
+   ```
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+4. Run migrations and create superuser:
+   ```
+   python manage.py makemigrations
+   python manage.py migrate
+   python manage.py createsuperuser
+   ```
 
-**Edit a file directly in GitHub**
+5. Start the backend server:
+   ```
+   python manage.py runserver 0.0.0.0:8000
+   ```
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Frontend Setup
 
-**Use GitHub Codespaces**
+1. Navigate to the root directory (contains the React app):
+   ```
+   cd /path/to/react-pics-share
+   ```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+2. Install dependencies:
+   ```
+   bun install
+   ```
 
-## What technologies are used for this project?
+3. Start the development server:
+   ```
+   bun run dev
+   ```
 
-This project is built with:
+### Mobile App (Expogo) Setup
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+1. Navigate to the expogo directory:
+   ```
+   cd expogo
+   ```
 
-## How can I deploy this project?
+2. Install dependencies:
+   ```
+   bun install
+   ```
 
-Simply open [Lovable](https://lovable.dev/projects/4644b260-0ce4-47a4-bc5f-bf177abee9a8) and click on Share -> Publish.
+3. Update the API base URL in `src/services/api.ts`:
+   - Change `API_BASE_URL` to your local IP (e.g., `http://192.168.1.100:8000/api`)
+   - Find your local IP using `ifconfig` (macOS/Linux) or `ipconfig` (Windows)
 
-## Can I connect a custom domain to my Lovable project?
+4. Start the Expo development server:
+   ```
+   npx expo start --clear
+   ```
 
-Yes, you can!
+   For specific platforms:
+   - iOS: `npx expo start --ios`
+   - Android: `npx expo start --android`
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+### API Endpoints
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+- POST `/api/auth/register/` - User registration
+- POST `/api/auth/verify-otp/` - OTP verification
+- POST `/api/auth/login/` - User login (JWT)
+- POST `/api/auth/reset-password/` - Request password reset
+- POST `/api/auth/reset-password/confirm/` - Confirm password reset
+- GET/POST `/api/posts/` - Get/create posts
+- DELETE `/api/posts/{id}/` - Delete post
+- POST `/api/posts/{id}/like/` - Like a post
+- DELETE `/api/posts/{id}/like/` - Unlike a post
+
+Images are served at `/media/` during development.
+
+## Technologies Used
+
+- **Backend**: Django, Django REST Framework, SQLite
+- **Frontend**: React, TypeScript, Tailwind CSS, Vite
+- **Mobile**: React Native, Expo
+- **Authentication**: JWT, 2FA, Biometric authentication
