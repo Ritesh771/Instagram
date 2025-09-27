@@ -11,11 +11,14 @@ import { useToast } from '@/hooks/use-toast';
 const Register: React.FC = () => {
   const [step, setStep] = useState<'register' | 'verify'>('register');
   const [formData, setFormData] = useState({
-    username: '',
+    firstName: '',
+    lastName: '',
     email: '',
     password: '',
     confirmPassword: '',
   });
+  const [generatedUsername, setGeneratedUsername] = useState<string>('');
+  const [finalUsername, setFinalUsername] = useState<string>('');
   const [otpData, setOtpData] = useState({
     email: '',
     code: '',
@@ -23,7 +26,7 @@ const Register: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const { register, verifyOTP, isAuthenticated } = useAuth();
+  const { register, verifyOTP, getUsernamePreview, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -34,13 +37,27 @@ const Register: React.FC = () => {
     }
   }, [isAuthenticated, navigate]);
 
+  // Update username preview when names change
+  useEffect(() => {
+    const updateUsernamePreview = async () => {
+      if (formData.firstName.trim()) {
+        const result = await getUsernamePreview(formData.firstName, formData.lastName, formData.email);
+        if (result.success && result.username) {
+          setGeneratedUsername(result.username);
+        }
+      } else {
+        setGeneratedUsername('');
+      }
+    };
+    
+    updateUsernamePreview();
+  }, [formData.firstName, formData.lastName, formData.email, getUsernamePreview]);
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.username.trim()) {
-      newErrors.username = 'Username is required';
-    } else if (formData.username.length < 3) {
-      newErrors.username = 'Username must be at least 3 characters';
+    if (!formData.firstName.trim()) {
+      newErrors.firstName = 'First name is required';
     }
 
     if (!formData.email.trim()) {
@@ -50,7 +67,7 @@ const Register: React.FC = () => {
     }
 
     if (!formData.password) {
-      newErrors.password = 'Password is required';
+      newErrors.password = 'Password must be at least 8 characters';
     } else if (formData.password.length < 8) {
       newErrors.password = 'Password must be at least 8 characters';
     }
@@ -69,9 +86,10 @@ const Register: React.FC = () => {
     if (!validateForm()) return;
 
     setIsLoading(true);
-    const result = await register(formData.username, formData.email, formData.password);
+    const result = await register(formData.firstName, formData.lastName, formData.email, formData.password);
     
     if (result.success) {
+      setFinalUsername(result.username || generatedUsername);
       setOtpData({ ...otpData, email: formData.email });
       setStep('verify');
       toast({
@@ -79,11 +97,21 @@ const Register: React.FC = () => {
         description: result.message,
       });
     } else {
-      toast({
-        title: "Registration Failed",
-        description: result.message,
-        variant: "destructive",
-      });
+      if (result.details) {
+        const newErrors: Record<string, string> = {};
+        Object.entries(result.details).forEach(([field, messages]) => {
+          if (messages.length > 0) {
+            newErrors[field] = messages[0]; // Take the first error message for each field
+          }
+        });
+        setErrors(newErrors);
+      } else {
+        toast({
+          title: "Registration Failed",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
     }
     setIsLoading(false);
   };
@@ -106,11 +134,21 @@ const Register: React.FC = () => {
       });
       navigate('/feed');
     } else {
-      toast({
-        title: "Verification Failed",
-        description: result.message,
-        variant: "destructive",
-      });
+      if (result.details) {
+        const newErrors: Record<string, string> = {};
+        Object.entries(result.details).forEach(([field, messages]) => {
+          if (messages.length > 0) {
+            newErrors[field] = messages[0];
+          }
+        });
+        setErrors(newErrors);
+      } else {
+        toast({
+          title: "Verification Failed",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
     }
     setIsLoading(false);
   };
@@ -123,6 +161,11 @@ const Register: React.FC = () => {
   };
 
   const handleOtpChange = (field: string, value: string) => {
+    // For code field, only allow digits
+    if (field === 'code') {
+      value = value.replace(/\D/g, '');
+    }
+    
     setOtpData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -142,7 +185,7 @@ const Register: React.FC = () => {
           <p className="text-muted-foreground">
             {step === 'register' 
               ? 'Create your account to start sharing' 
-              : 'Enter the verification code sent to your email'
+              : `Verify your email to complete registration. Your username will be @${finalUsername}`
             }
           </p>
         </CardHeader>
@@ -150,21 +193,39 @@ const Register: React.FC = () => {
           {step === 'register' ? (
             <form onSubmit={handleRegister} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="firstName">First Name</Label>
                 <div className="relative">
                   <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
-                    id="username"
+                    id="firstName"
                     type="text"
-                    placeholder="Choose a username"
-                    value={formData.username}
-                    onChange={(e) => handleInputChange('username', e.target.value)}
-                    className={`pl-10 ${errors.username ? 'border-red-500' : ''}`}
+                    placeholder="Enter your first name"
+                    value={formData.firstName}
+                    onChange={(e) => handleInputChange('firstName', e.target.value)}
+                    className={`pl-10 ${errors.firstName ? 'border-red-500' : ''}`}
                     required
                   />
                 </div>
-                {errors.username && (
-                  <p className="text-sm text-red-500">{errors.username}</p>
+                {errors.firstName && (
+                  <p className="text-sm text-red-500">{errors.firstName}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last Name <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="lastName"
+                    type="text"
+                    placeholder="Enter your last name"
+                    value={formData.lastName}
+                    onChange={(e) => handleInputChange('lastName', e.target.value)}
+                    className={`pl-10 ${errors.lastName ? 'border-red-500' : ''}`}
+                  />
+                </div>
+                {errors.lastName && (
+                  <p className="text-sm text-red-500">{errors.lastName}</p>
                 )}
               </div>
 
@@ -186,6 +247,18 @@ const Register: React.FC = () => {
                   <p className="text-sm text-red-500">{errors.email}</p>
                 )}
               </div>
+
+              {generatedUsername && (
+                <div className="space-y-2">
+                  <Label>Your Username</Label>
+                  <div className="p-3 bg-muted/50 rounded-lg border">
+                    <p className="text-sm font-medium text-foreground">@{generatedUsername}</p>
+                    <p className="text-xs text-muted-foreground">
+                      This will be your username.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
@@ -245,6 +318,8 @@ const Register: React.FC = () => {
                   onChange={(e) => handleOtpChange('code', e.target.value)}
                   className={`text-center text-lg tracking-widest ${errors.code ? 'border-red-500' : ''}`}
                   maxLength={6}
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
                   required
                 />
                 {errors.code && (

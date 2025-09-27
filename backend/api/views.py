@@ -46,15 +46,25 @@ class RegisterView(APIView):
             expires_at=timezone.now() + timedelta(minutes=10),
         )
 
-        send_mail(
-            subject='Your verification code',
-            message=f'Your OTP is {code}. It expires in 10 minutes.',
-            from_email=None,
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
+        print(f"OTP for {user.email}: {code}")  # Development debugging
 
-        return Response({'detail': 'Registered. Check email for OTP.'}, status=status.HTTP_201_CREATED)
+        try:
+            send_mail(
+                subject='Your verification code',
+                message=f'Your OTP is {code}. It expires in 10 minutes.',
+                from_email=None,
+                recipient_list=[user.email],
+                fail_silently=False,
+            )
+            print(f"Verification email sent to {user.email}")
+        except Exception as e:
+            print(f"Failed to send verification email to {user.email}: {e}")
+            # Continue with registration even if email fails
+
+        return Response({
+            'detail': 'Registered. Check email for OTP.',
+            'username': user.username
+        }, status=status.HTTP_201_CREATED)
 
 
 class VerifyOTPView(APIView):
@@ -97,13 +107,19 @@ class LoginView(APIView):
                 purpose='login',
                 expires_at=timezone.now() + timedelta(minutes=10),
             )
-            send_mail(
-                subject='Your login verification code',
-                message=f'Your OTP is {code}. It expires in 10 minutes.',
-                from_email=None,
-                recipient_list=[user.email],
-                fail_silently=False,
-            )
+            print(f"2FA OTP for {user.email}: {code}")  # Development debugging
+            try:
+                send_mail(
+                    subject='Your login verification code',
+                    message=f'Your OTP is {code}. It expires in 10 minutes.',
+                    from_email=None,
+                    recipient_list=[user.email],
+                    fail_silently=False,
+                )
+                print(f"2FA email sent to {user.email}")
+            except Exception as e:
+                print(f"Failed to send 2FA email to {user.email}: {e}")
+                return Response({'error': 'Failed to send 2FA email'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             return Response({'detail': '2FA enabled. Check email for OTP.', 'requires_2fa': True})
         
         # No 2FA - return JWT tokens directly
@@ -115,9 +131,13 @@ class LoginView(APIView):
             'user': {
                 'id': user.id,
                 'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
                 'email': user.email,
                 'is_verified': user.is_verified,
                 'two_factor_enabled': user.two_factor_enabled,
+                'bio': user.bio,
+                'profile_pic': user.profile_pic.url if user.profile_pic else None,
             }
         })
 
@@ -161,9 +181,13 @@ class Verify2FAView(APIView):
             'user': {
                 'id': user.id,
                 'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
                 'email': user.email,
                 'is_verified': user.is_verified,
                 'two_factor_enabled': user.two_factor_enabled,
+                'bio': user.bio,
+                'profile_pic': user.profile_pic.url if user.profile_pic else None,
             }
         })
 
@@ -182,13 +206,19 @@ class ResetPasswordRequestView(APIView):
             purpose='reset',
             expires_at=timezone.now() + timedelta(minutes=10),
         )
-        send_mail(
-            subject='Password reset code',
-            message=f'Your OTP is {code}. It expires in 10 minutes.',
-            from_email=None,
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
+        print(f"Password reset OTP for {user.email}: {code}")  # Development debugging
+        try:
+            send_mail(
+                subject='Password reset code',
+                message=f'Your OTP is {code}. It expires in 10 minutes.',
+                from_email=None,
+                recipient_list=[user.email],
+                fail_silently=False,
+            )
+            print(f"Password reset email sent to {user.email}")
+        except Exception as e:
+            print(f"Failed to send password reset email to {user.email}: {e}")
+            return Response({'error': 'Failed to send reset email'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response({'detail': 'Reset OTP sent.'})
 
 
@@ -267,6 +297,39 @@ class LikePostView(APIView):
             return Response({'liked': False, 'likes_count': post.likes_count})
         except Like.DoesNotExist:
             return Response({'error': 'Not liked'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UsernamePreviewView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        first_name = request.data.get('first_name', '').strip()
+        last_name = request.data.get('last_name', '').strip()
+        email = request.data.get('email', '').strip()
+        
+        if not first_name:
+            return Response({'error': 'First name is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Generate username using same logic as RegisterSerializer
+        if last_name:
+            base_username = f"{first_name.lower()}{last_name.lower()}"
+        else:
+            base_username = first_name.lower()
+        
+        username = base_username
+        
+        # Check if username exists, if so use email prefix
+        if User.objects.filter(username=username).exists():
+            email_prefix = email.split('@')[0] if '@' in email else ''
+            if email_prefix:
+                username = email_prefix
+                # If email prefix also exists, add counter
+                counter = 1
+                while User.objects.filter(username=username).exists():
+                    username = f"{email_prefix}{counter}"
+                    counter += 1
+        
+        return Response({'username': username})
 
 
 class ProfileView(APIView):

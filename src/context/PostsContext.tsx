@@ -8,6 +8,8 @@ interface PostsContextType {
   error: string | null;
   addPost: (image: File, caption: string) => Promise<{ success: boolean; message?: string }>;
   deletePost: (postId: number) => Promise<{ success: boolean; message?: string }>;
+  likePost: (postId: number) => Promise<{ success: boolean; message?: string }>;
+  unlikePost: (postId: number) => Promise<{ success: boolean; message?: string }>;
   refreshPosts: () => Promise<void>;
 }
 
@@ -105,12 +107,76 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ children }) => {
     }
   };
 
+  const likePost = async (postId: number) => {
+    if (!isAuthenticated) {
+      return { success: false, message: 'You must be logged in to like posts' };
+    }
+
+    // Optimistic update
+    const originalPosts = [...posts];
+    setPosts(prev => prev.map(post => 
+      post.id === postId 
+        ? { ...post, is_liked: true, likes_count: post.likes_count + 1 }
+        : post
+    ));
+
+    try {
+      const response = await apiService.likePost(postId);
+      // Update with server response
+      setPosts(prev => prev.map(post => 
+        post.id === postId 
+          ? { ...post, is_liked: true, likes_count: response.data.likes_count }
+          : post
+      ));
+      return { success: true };
+    } catch (err) {
+      // Rollback on error
+      setPosts(originalPosts);
+      const apiError = apiService.handleError(err);
+      setError(apiError.message);
+      return { success: false, message: apiError.message };
+    }
+  };
+
+  const unlikePost = async (postId: number) => {
+    if (!isAuthenticated) {
+      return { success: false, message: 'You must be logged in to unlike posts' };
+    }
+
+    // Optimistic update
+    const originalPosts = [...posts];
+    setPosts(prev => prev.map(post => 
+      post.id === postId 
+        ? { ...post, is_liked: false, likes_count: Math.max(0, post.likes_count - 1) }
+        : post
+    ));
+
+    try {
+      const response = await apiService.unlikePost(postId);
+      // Update with server response
+      setPosts(prev => prev.map(post => 
+        post.id === postId 
+          ? { ...post, is_liked: false, likes_count: response.data.likes_count }
+          : post
+      ));
+      return { success: true };
+    } catch (err) {
+      // Rollback on error
+      setPosts(originalPosts);
+      const apiError = apiService.handleError(err);
+      setError(apiError.message);
+      return { success: false, message: apiError.message };
+    }
+  };
+
   const value: PostsContextType = {
     posts,
     isLoading,
     error,
     addPost,
     deletePost,
+    likePost,
+    unlikePost,
     refreshPosts,
   };
 

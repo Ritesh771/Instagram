@@ -5,6 +5,8 @@ import type { AxiosInstance, AxiosResponse } from 'axios';
 export interface User {
   id: number;
   username: string;
+  first_name: string;
+  last_name: string;
   email: string;
   is_verified: boolean;
   two_factor_enabled: boolean;
@@ -18,6 +20,8 @@ export interface Post {
   image: string;
   caption: string;
   created_at: string;
+  likes_count: number;
+  is_liked: boolean;
 }
 
 export interface AuthResponse {
@@ -107,10 +111,11 @@ class ApiService {
 
   // Auth endpoints
   async register(data: {
-    username: string;
+    first_name: string;
+    last_name: string;
     email: string;
     password: string;
-  }): Promise<AxiosResponse<{ detail: string }>> {
+  }): Promise<AxiosResponse<{ detail: string; username: string }>> {
     return this.api.post('/auth/register/', data);
   }
 
@@ -153,6 +158,14 @@ class ApiService {
     return axios.post(`${API_BASE_URL}/auth/token/refresh/`, { refresh });
   }
 
+  async getUsernamePreview(data: {
+    first_name: string;
+    last_name: string;
+    email: string;
+  }): Promise<AxiosResponse<{ username: string }>> {
+    return this.api.post('/auth/username-preview/', data);
+  }
+
   // Posts endpoints
   async getPosts(): Promise<AxiosResponse<Post[]>> {
     return this.api.get('/posts/');
@@ -168,6 +181,15 @@ class ApiService {
 
   async deletePost(id: number): Promise<AxiosResponse<void>> {
     return this.api.delete(`/posts/${id}/`);
+  }
+
+  // Liking API Methods
+  async likePost(postId: number): Promise<AxiosResponse<{ liked: boolean; likes_count: number }>> {
+    return this.api.post(`/posts/${postId}/like/`);
+  }
+
+  async unlikePost(postId: number): Promise<AxiosResponse<{ liked: boolean; likes_count: number }>> {
+    return this.api.delete(`/posts/${postId}/like/`);
   }
 
   // User profile endpoints
@@ -194,7 +216,7 @@ class ApiService {
   // Error handling
   handleError(error: unknown): ApiError {
     if (error && typeof error === 'object' && 'response' in error) {
-      const axiosError = error as { response?: { data?: unknown } };
+      const axiosError = error as { response?: { data?: any } };
       const data = axiosError.response?.data;
       if (typeof data === 'string') {
         return { message: data };
@@ -205,8 +227,15 @@ class ApiService {
       if (data?.error) {
         return { message: data.error };
       }
-      if (data?.details) {
-        return { message: 'Validation error', details: data.details };
+      // Check if data is an object with field errors (e.g., {"email": ["error"]})
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const keys = Object.keys(data);
+        const hasFieldErrors = keys.length > 0 && keys.every(key => Array.isArray(data[key]) && data[key].every((msg: any) => typeof msg === 'string'));
+        if (hasFieldErrors) {
+          const details = data as Record<string, string[]>;
+          const messages = Object.values(details).flat();
+          return { message: messages.join(' '), details };
+        }
       }
     }
     if (error && typeof error === 'object' && 'message' in error) {

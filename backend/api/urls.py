@@ -13,7 +13,8 @@ from .views import (
     PostListCreateView,
     PostDeleteView,
     LikePostView,
-    ProfileView
+    ProfileView,
+    UsernamePreviewView
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -35,6 +36,7 @@ urlpatterns = [
     path('auth/reset-password/confirm/', ResetPasswordConfirmView.as_view(), name='reset-password-confirm'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('auth/profile/', ProfileView.as_view(), name='profile'),
+    path('auth/username-preview/', UsernamePreviewView.as_view(), name='username-preview'),
 
     path('posts/', PostListCreateView.as_view(), name='posts'),
     path('posts/<int:pk>/', PostDeleteView.as_view(), name='post-delete'),

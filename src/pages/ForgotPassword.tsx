@@ -11,7 +11,6 @@ import { useToast } from '@/hooks/use-toast';
 const ForgotPassword: React.FC = () => {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState('');
 
   const { requestPasswordReset, isAuthenticated } = useAuth();
@@ -44,11 +43,11 @@ const ForgotPassword: React.FC = () => {
     const result = await requestPasswordReset(email);
     
     if (result.success) {
-      setIsSubmitted(true);
       toast({
         title: "Reset Email Sent",
         description: result.message,
       });
+      navigate(`/reset-password?email=${encodeURIComponent(email)}`);
     } else {
       setError(result.message || 'Failed to send reset email');
       toast({
@@ -66,53 +65,6 @@ const ForgotPassword: React.FC = () => {
       setError('');
     }
   };
-
-  if (isSubmitted) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-secondary to-accent/10 p-4">
-        <Card className="w-full max-w-md bg-gradient-card border-border/50 shadow-2xl">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-              <Mail className="h-8 w-8 text-green-600" />
-            </div>
-            <CardTitle className="text-3xl font-bold text-gradient">
-              Check Your Email
-            </CardTitle>
-            <p className="text-muted-foreground">
-              We've sent a password reset link to your email address
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="text-center space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Didn't receive the email? Check your spam folder or try again.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <Button
-                onClick={() => {
-                  setIsSubmitted(false);
-                  setEmail('');
-                }}
-                variant="outline"
-                className="w-full"
-              >
-                Try Different Email
-              </Button>
-              
-              <Button
-                onClick={() => navigate('/login')}
-                className="w-full bg-gradient-instagram text-white hover:opacity-90"
-              >
-                Back to Login
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-secondary to-accent/10 p-4">

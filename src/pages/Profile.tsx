@@ -241,7 +241,7 @@ const Profile: React.FC = () => {
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {userPosts.map((post) => (
                 <Card
-                  key={post.id}
+                  key={post.id + post.likes_count}
                   className="group cursor-pointer overflow-hidden bg-gradient-card border-border/50 shadow-lg transition-transform hover:scale-105"
                 >
                   <CardContent className="p-0">
@@ -257,8 +257,8 @@ const Profile: React.FC = () => {
                       />
                       <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
                         <div className="text-center text-white">
-                          <p className="text-lg font-bold">0 likes</p>
-                          <p className="text-sm">{post.caption.slice(0, 50)}...</p>
+                          <p className="text-lg font-bold">{post.likes_count} {post.likes_count === 1 ? 'like' : 'likes'}</p>
+                          <p className="text-sm">{post.caption.slice(0, 50)}{post.caption.length > 50 ? '...' : ''}</p>
                         </div>
                       </div>
                     </div>
