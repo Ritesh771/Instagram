@@ -138,9 +138,7 @@ const ProfileScreen: React.FC = () => {
       </View>
 
       <View style={styles.settingsContainer}>
-        <TouchableOpacity style={styles.settingButton}>
-          <Text style={styles.settingText}>Edit Profile</Text>
-        </TouchableOpacity>
+        
         
         <View style={styles.settingButton}>
           <View style={styles.settingRow}>

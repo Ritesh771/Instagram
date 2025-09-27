@@ -42,6 +42,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isBiometricLocked, setIsBiometricLocked] = useState(false);
+  const [lastBackgroundTime, setLastBackgroundTime] = useState<number | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -68,15 +69,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Handle app state changes (background/foreground)
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active' && user) {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // Track when app goes to background
+        setLastBackgroundTime(Date.now());
+      } else if (nextAppState === 'active' && user) {
         // App came to foreground, check if biometric lock is needed
-        await checkBiometricLockRequirement();
+        // Skip biometric check if we just returned quickly (likely from camera/gallery)
+        const timeSinceBackground = lastBackgroundTime ? Date.now() - lastBackgroundTime : Infinity;
+        if (timeSinceBackground > 30000) { // 30 seconds threshold
+          await checkBiometricLockRequirement();
+        } else {
+          console.log('Skipping biometric lock check - returned quickly from background');
+        }
       }
     };
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription.remove();
-  }, [user]);
+  }, [user, lastBackgroundTime]);
 
   const checkBiometricLockRequirement = async () => {
     try {
