@@ -1,0 +1,25 @@
+ Login Credentials:
+==================================================
+Username: john_doe
+Email: john.doe@example.com
+Password: password123
+Bio: Photography enthusiast and nature lover
+------------------------------
+Username: sarah_wilson
+Email: sarah.wilson@example.com
+Password: password123
+Bio: Travel blogger and adventure seeker
+------------------------------
+Username: mike_chen
+Email: mike.chen@example.com
+Password: password123
+Bio: Food photographer and chef
+------------------------------
+Username: emma_davis
+Email: emma.davis@example.com
+Password: password123
+Bio: Fashion and lifestyle content creator
+------------------------------
+Username: alex_brown
+Email: alex.brown@example.com
+Bio: Tech enthusiast and developer
