@@ -14,7 +14,10 @@ from .views import (
     PostDeleteView,
     LikePostView,
     ProfileView,
-    UsernamePreviewView
+    UsernamePreviewView,
+    BiometricChallengeView,
+    BiometricRegisterView,
+    BiometricAuthenticateView
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -37,6 +40,9 @@ urlpatterns = [
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('auth/profile/', ProfileView.as_view(), name='profile'),
     path('auth/username-preview/', UsernamePreviewView.as_view(), name='username-preview'),
+    path('auth/biometric/challenge/', BiometricChallengeView.as_view(), name='biometric-challenge'),
+    path('auth/biometric/register/', BiometricRegisterView.as_view(), name='biometric-register'),
+    path('auth/biometric/authenticate/', BiometricAuthenticateView.as_view(), name='biometric-authenticate'),
 
     path('posts/', PostListCreateView.as_view(), name='posts'),
     path('posts/<int:pk>/', PostDeleteView.as_view(), name='post-delete'),

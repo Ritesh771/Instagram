@@ -15,6 +15,11 @@ interface AuthContextType {
   updateUser: (userData: Partial<User>) => void;
   updateProfile: (data: { bio?: string; two_factor_enabled?: boolean }) => Promise<{ success: boolean; message?: string; details?: Record<string, string[]> }>;
   getUsernamePreview: (firstName: string, lastName: string, email: string) => Promise<{ success: boolean; username?: string; message?: string }>;
+  // Biometric methods
+  biometricLogin: () => Promise<{ success: boolean; message?: string }>;
+  enableBiometricLogin: () => Promise<{ success: boolean; message?: string }>;
+  disableBiometricLogin: () => Promise<{ success: boolean; message?: string }>;
+  isBiometricAvailable: () => Promise<{ available: boolean; types: string[] }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -188,6 +193,90 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // Biometric methods
+  const biometricLogin = async () => {
+    try {
+      setIsLoading(true);
+      const result = await apiService.authenticateWithBiometrics();
+      if (result.success) {
+        // Get user data from response (assuming it's included)
+        const savedUser = localStorage.getItem('user');
+        if (savedUser) {
+          setUser(JSON.parse(savedUser));
+        }
+      }
+      return result;
+    } catch (error) {
+      return { success: false, message: 'Biometric login failed' };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const enableBiometricLogin = async () => {
+    try {
+      setIsLoading(true);
+
+      // Check if WebAuthn is supported
+      if (!window.PublicKeyCredential) {
+        return { success: false, message: 'Web Authentication is not supported on this browser' };
+      }
+
+      // Check if biometrics are available
+      const biometricCheck = await isBiometricAvailable();
+      if (!biometricCheck.available) {
+        return { success: false, message: 'Biometric authentication is not available on this device' };
+      }
+
+      // Register biometric credential using WebAuthn
+      const biometricResult = await apiService.registerBiometricCredential(user?.username || '');
+      if (!biometricResult.success) {
+        return biometricResult;
+      }
+
+      // Update local user state
+      if (user) {
+        const updatedUser = { ...user, biometric_enabled: true };
+        setUser(updatedUser);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+      }
+
+      return { success: true, message: 'Biometric login enabled successfully' };
+    } catch (error) {
+      return { success: false, message: 'Failed to enable biometric login' };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const disableBiometricLogin = async () => {
+    try {
+      setIsLoading(true);
+      const result = await apiService.disableBiometricLogin();
+      if (result.success) {
+        // Update local user state
+        if (user) {
+          const updatedUser = { ...user, biometric_enabled: false };
+          setUser(updatedUser);
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+        }
+        // Clear biometric data
+        localStorage.removeItem('biometric_enabled');
+        localStorage.removeItem('biometric_username');
+        localStorage.removeItem('biometric_credential_id');
+      }
+      return result;
+    } catch (error) {
+      return { success: false, message: 'Failed to disable biometric login' };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const isBiometricAvailable = async () => {
+    return await apiService.isBiometricAvailable();
+  };
+
   const value: AuthContextType = {
     user,
     isAuthenticated: !!user,
@@ -202,6 +291,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     updateUser,
     updateProfile,
     getUsernamePreview,
+    biometricLogin,
+    enableBiometricLogin,
+    disableBiometricLogin,
+    isBiometricAvailable,
   };
 
   return (
