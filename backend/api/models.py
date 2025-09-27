@@ -9,6 +9,7 @@ class User(AbstractUser):
     two_factor_enabled = models.BooleanField(default=False)
     bio = models.TextField(blank=True, null=True)
     profile_pic = models.ImageField(upload_to='profiles/', blank=True, null=True)
+    biometric_enabled = models.BooleanField(default=False)
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['email']

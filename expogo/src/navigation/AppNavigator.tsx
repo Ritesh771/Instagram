@@ -9,12 +9,13 @@ import RegisterScreen from '@/screens/RegisterScreen';
 import Verify2FAScreen from '@/screens/Verify2FAScreen';
 import ForgotPasswordScreen from '@/screens/ForgotPasswordScreen';
 import ResetPasswordScreen from '@/screens/ResetPasswordScreen';
+import BiometricLockScreen from '@/screens/BiometricLockScreen';
 import TabNavigator from './TabNavigator';
 
 const Stack = createStackNavigator();
 
 const AppNavigator: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isBiometricLocked } = useAuth();
 
   if (isLoading) {
     // You can create a loading screen component
@@ -25,10 +26,15 @@ const AppNavigator: React.FC = () => {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {isAuthenticated ? (
-          <>
+          isBiometricLocked ? (
+            // Show biometric lock screen
+            <Stack.Screen name="BiometricLock" component={BiometricLockScreen} />
+          ) : (
+            // Show main app
             <Stack.Screen name="Main" component={TabNavigator} />
-          </>
+          )
         ) : (
+          // Show auth screens
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
