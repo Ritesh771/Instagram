@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { User, Grid, Camera, Plus, Settings, Shield, Edit3, Save, X } from 'lucide-react';
+import { User, Grid, Camera, Plus, Settings, Shield, Edit3, Save, X, Fingerprint } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import Navbar from '@/components/Navbar';
 const Profile: React.FC = () => {
   const { username } = useParams<{ username: string }>();
   const { posts } = usePosts();
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, enableBiometricLogin, disableBiometricLogin, isBiometricAvailable } = useAuth();
   const { toast } = useToast();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -73,6 +73,58 @@ const Profile: React.FC = () => {
   const handleCancelEdit = () => {
     setEditBio(user?.bio || '');
     setIsEditing(false);
+  };
+
+  const handleToggleBiometric = async (enabled: boolean) => {
+    if (!isOwnProfile) return;
+
+    if (enabled) {
+      // Check if biometrics are available
+      const biometricCheck = await isBiometricAvailable();
+      if (!biometricCheck.available) {
+        toast({
+          title: "Biometrics Unavailable",
+          description: "Biometric authentication is not available on this device.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Enable biometric login directly
+      setIsUpdating(true);
+      const result = await enableBiometricLogin();
+      if (result.success) {
+        toast({
+          title: "Biometric Login Enabled",
+          description: "You can now log in using biometric authentication.",
+        });
+      } else {
+        toast({
+          title: "Setup Failed",
+          description: result.message || "Failed to enable biometric login",
+          variant: "destructive",
+        });
+      }
+      setIsUpdating(false);
+    } else {
+      // Disable biometric login
+      setIsUpdating(true);
+      const result = await disableBiometricLogin();
+      
+      if (result.success) {
+        toast({
+          title: "Biometric Login Disabled",
+          description: "Biometric authentication has been disabled for your account.",
+        });
+      } else {
+        toast({
+          title: "Update Failed",
+          description: result.message || "Failed to disable biometric login",
+          variant: "destructive",
+        });
+      }
+      setIsUpdating(false);
+    }
   };
 
   return (
@@ -214,6 +266,27 @@ const Profile: React.FC = () => {
                   disabled={isUpdating}
                 />
               </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label htmlFor="biometric-toggle" className="text-base font-medium flex items-center gap-2">
+                    <Fingerprint className="h-4 w-4" />
+                    Biometric Login
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    {user?.biometric_enabled
+                      ? "Biometric login is enabled. You can log in with fingerprint/face ID."
+                      : "Biometric login is disabled. Enable for quick authentication."
+                    }
+                  </p>
+                </div>
+                <Switch
+                  id="biometric-toggle"
+                  checked={user?.biometric_enabled || false}
+                  onCheckedChange={handleToggleBiometric}
+                  disabled={isUpdating}
+                />
+              </div>
               
               <div className="p-3 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">
@@ -224,6 +297,18 @@ const Profile: React.FC = () => {
                   • Enter the code to complete authentication
                   <br />
                   • This adds an extra layer of security to your account
+                </p>
+              </div>
+
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  <strong>How Biometric Login works:</strong>
+                  <br />
+                  • Use fingerprint, face ID, or other biometric methods to log in
+                  <br />
+                  • Your biometric data is stored securely on your device
+                  <br />
+                  • You can always fall back to password login
                 </p>
               </div>
             </CardContent>

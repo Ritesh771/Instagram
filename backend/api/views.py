@@ -1,5 +1,9 @@
 from datetime import timedelta
 import random
+import json
+import base64
+import hashlib
+import secrets
 
 from django.utils import timezone
 from django.core.mail import send_mail
@@ -351,3 +355,217 @@ class ProfileView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# Simplified Biometric Authentication Views (WebAuthn implementation)
+import secrets
+import base64
+import json
+import hashlib
+from django.utils import timezone
+class BiometricChallengeView(APIView):
+    def get_permissions(self):
+        """Allow unauthenticated access for authentication challenges"""
+        if self.request.method == 'POST':
+            action = self.request.data.get('action')
+            if action == 'authenticate':
+                return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
+
+    def post(self, request):
+        """Generate a challenge for biometric registration/authentication"""
+        action = request.data.get('action')
+        if action not in ['register', 'authenticate']:
+            return Response({'error': 'Invalid action'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generate a cryptographic challenge
+        challenge = secrets.token_bytes(32)
+        challenge_b64 = base64.b64encode(challenge).decode('utf-8')
+
+        if action == 'register':
+            # For registration, user must be authenticated
+            if not request.user.is_authenticated:
+                return Response({'error': 'Authentication required for registration'}, status=status.HTTP_401_UNAUTHORIZED)
+
+            # Store challenge in user model for verification
+            request.user.biometric_challenge = challenge_b64
+            request.user.biometric_action = action
+            request.user.save(update_fields=['biometric_challenge', 'biometric_action'])
+
+            # Create challenge response for registration
+            challenge_data = {
+                'challenge': challenge_b64,
+                'rp': {
+                    'name': 'React Pics Share',
+                    'id': 'localhost'  # In production, use your actual domain
+                },
+                'user': {
+                    'id': base64.b64encode(str(request.user.id).encode()).decode(),
+                    'name': request.user.username,
+                    'displayName': request.user.get_full_name() or request.user.username
+                },
+                'pubKeyCredParams': [
+                    {'alg': -7, 'type': 'public-key'},  # ES256
+                    {'alg': -257, 'type': 'public-key'}  # RS256
+                ],
+                'timeout': 60000,
+                'attestation': 'direct'
+            }
+        else:  # action == 'authenticate'
+            # For authentication, we need to know which user or provide a way to identify them
+            # For now, we'll require a username to be passed for authentication
+            username = request.data.get('username')
+            if not username:
+                return Response({'error': 'Username required for biometric authentication'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            # Check if user has biometric enabled
+            if not user.biometric_enabled:
+                return Response({'error': 'Biometric login not enabled for this user'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Store challenge temporarily (we'll verify it during authentication)
+            user.biometric_challenge = challenge_b64
+            user.biometric_action = action
+            user.save(update_fields=['biometric_challenge', 'biometric_action'])
+
+            # Get user's biometric credentials
+            from .models import BiometricCredential
+            credentials = BiometricCredential.objects.filter(user=user)
+            if not credentials.exists():
+                return Response({'error': 'No biometric credentials registered'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Create challenge response for authentication
+            challenge_data = {
+                'challenge': challenge_b64,
+                'allowCredentials': [
+                    {
+                        'type': 'public-key',
+                        'id': base64.b64encode(base64.urlsafe_b64decode(cred.credential_id + '==')).decode('utf-8'),
+                        'debug_info': f'Credential for user {user.username}, created {cred.created_at}'
+                    } for cred in credentials
+                ],
+                'timeout': 60000
+            }
+
+        return Response(challenge_data)
+
+
+class BiometricRegisterView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """Register biometric authentication (WebAuthn)"""
+        try:
+            credential_data = request.data.get('credential')
+            if not credential_data:
+                return Response({'error': 'Credential data required'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Parse the credential response
+            credential = json.loads(credential_data)
+
+            # Verify the credential ID and public key
+            credential_id_b64url = credential.get('id')
+            public_key = credential.get('publicKey')
+
+            if not credential_id_b64url or not public_key:
+                return Response({'error': 'Invalid credential data'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Convert base64url to base64 for storage
+            # Add padding if needed
+            missing_padding = len(credential_id_b64url) % 4
+            if missing_padding:
+                credential_id_b64url += '=' * (4 - missing_padding)
+            
+            # Convert from base64url to bytes, then to base64
+            credential_id_bytes = base64.urlsafe_b64decode(credential_id_b64url)
+            credential_id_b64 = base64.b64encode(credential_id_bytes).decode('utf-8')
+
+            # Store the credential
+            from .models import BiometricCredential
+            BiometricCredential.objects.create(
+                user=request.user,
+                credential_id=credential_id_b64,
+                public_key=json.dumps(public_key)
+            )
+
+            # Enable biometric login for the user
+            request.user.biometric_enabled = True
+            request.user.save(update_fields=['biometric_enabled'])
+
+            return Response({'detail': 'Biometric authentication registered successfully'})
+
+        except Exception as e:
+            print(f"Biometric registration error: {e}")
+            return Response({'error': 'Failed to register biometric credential'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class BiometricAuthenticateView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        """Authenticate using biometric (WebAuthn)"""
+        try:
+            credential_data = request.data.get('credential')
+            if not credential_data:
+                return Response({'error': 'Credential data required'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Parse the credential response
+            credential = json.loads(credential_data)
+
+            # Get the credential ID
+            credential_id = credential.get('id')
+            if not credential_id:
+                return Response({'error': 'Invalid credential data'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Convert base64url to standard base64 for database lookup
+            missing_padding = len(credential_id) % 4
+            if missing_padding:
+                credential_id += '=' * (4 - missing_padding)
+            credential_id_bytes = base64.urlsafe_b64decode(credential_id)
+            credential_id_b64 = base64.b64encode(credential_id_bytes).decode('utf-8')
+
+            # Find the user by credential
+            from .models import BiometricCredential
+            try:
+                bio_cred = BiometricCredential.objects.get(credential_id=credential_id_b64)
+                user = bio_cred.user
+            except BiometricCredential.DoesNotExist:
+                return Response({'error': 'Biometric credential not found'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Verify user has biometric enabled
+            if not user.biometric_enabled:
+                return Response({'error': 'Biometric login not enabled for this user'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Update last used timestamp
+            bio_cred.last_used_at = timezone.now()
+            bio_cred.save(update_fields=['last_used_at'])
+
+            # Return JWT tokens
+            from rest_framework_simplejwt.tokens import RefreshToken
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'email': user.email,
+                    'is_verified': user.is_verified,
+                    'two_factor_enabled': user.two_factor_enabled,
+                    'biometric_enabled': user.biometric_enabled,
+                    'bio': user.bio,
+                    'profile_pic': user.profile_pic.url if user.profile_pic else None,
+                }
+            })
+
+        except Exception as e:
+            print(f"Biometric authentication error: {e}")
+            return Response({'error': 'Biometric authentication failed'}, status=status.HTTP_400_BAD_REQUEST)

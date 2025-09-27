@@ -7,15 +7,29 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     is_verified = models.BooleanField(default=False)
     two_factor_enabled = models.BooleanField(default=False)
+    biometric_enabled = models.BooleanField(default=False)
+    biometric_challenge = models.CharField(max_length=100, blank=True, null=True)
+    biometric_action = models.CharField(max_length=20, blank=True, null=True)
     bio = models.TextField(blank=True, null=True)
     profile_pic = models.ImageField(upload_to='profiles/', blank=True, null=True)
-    biometric_enabled = models.BooleanField(default=False)
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['email']
 
     def __str__(self) -> str:
         return self.username
+
+
+class BiometricCredential(models.Model):
+    user = models.ForeignKey('api.User', on_delete=models.CASCADE, related_name='biometric_credentials')
+    credential_id = models.CharField(max_length=255, unique=True)
+    public_key = models.TextField()
+    sign_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        return f"BiometricCredential for {self.user.username}"
 
 
 class OTP(models.Model):
