@@ -1,300 +1,128 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  ActivityIndicator,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '@/context/AuthContext';
 
-interface Verify2FAScreenProps {
-  navigation: any;
-  route: {
-    params: {
-      username: string;
-    };
-  };
-}
+type RootStackParamList = {
+  Login: undefined;
+  Register: undefined;
+  Verify2FA: { username: string };
+  Main: undefined;
+};
 
-const Verify2FAScreen = ({ navigation, route }: Verify2FAScreenProps) => {
+type Verify2FAScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Verify2FA'>;
+
+const Verify2FAScreen: React.FC = () => {
   const [code, setCode] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const { verify2FA, isLoading } = useAuth();
+  const navigation = useNavigation<Verify2FAScreenNavigationProp>();
+  const route = useRoute();
+  const { username } = route.params as { username: string };
 
-  const { verify2FA } = useAuth();
-  const { username } = route.params;
-
-  const handleVerify = async () => {
-    if (!code.trim()) {
-      setError('Verification code is required');
+  const handleVerify2FA = async () => {
+    if (!code) {
+      Alert.alert('Error', 'Please enter the 2FA code');
       return;
     }
 
-    if (code.length !== 6) {
-      setError('Please enter a 6-digit code');
-      return;
-    }
-
-    setIsLoading(true);
-    setError('');
-    
     const result = await verify2FA(username, code);
     
-    if (result.success) {
-      Alert.alert(
-        "Success!",
-        "You have been successfully logged in.",
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              // Navigation will be handled by AppNavigator based on authentication state
-            },
-          },
-        ]
-      );
-    } else {
-      setError(result.message || 'Verification failed');
-      Alert.alert("Verification Failed", result.message);
+    if (!result.success) {
+      Alert.alert('Verification Failed', result.message);
     }
-    setIsLoading(false);
-  };
-
-  const handleResendCode = () => {
-    Alert.alert(
-      "Resend Code",
-      "Please try logging in again to receive a new verification code.",
-      [
-        {
-          text: "OK",
-          onPress: () => navigation.navigate('Login'),
-        },
-      ]
-    );
-  };
-
-  const handleBackToLogin = () => {
-    navigation.navigate('Login');
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <LinearGradient
-        colors={['#ffffff', '#f8f9fa', '#e9ecef']}
-        style={styles.gradient}
+    <SafeAreaView style={styles.container}>
+      <View style={styles.innerContainer}>
+      <Text style={styles.title}>Two-Factor Authentication</Text>
+      <Text style={styles.subtitle}>Enter the code from your authenticator app</Text>
+      
+      <TextInput
+        style={styles.input}
+        placeholder="Enter 6-digit code"
+        value={code}
+        onChangeText={setCode}
+        keyboardType="numeric"
+        maxLength={6}
+      />
+      
+      <TouchableOpacity 
+        style={[styles.button, isLoading && styles.buttonDisabled]}
+        onPress={handleVerify2FA}
+        disabled={isLoading}
       >
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
-          <View style={styles.content}>
-            {/* Logo */}
-            <View style={styles.logoContainer}>
-              <LinearGradient
-                colors={['#E1306C', '#F56040', '#F77737']}
-                style={styles.logo}
-              >
-                <Ionicons name="shield-checkmark" size={40} color="white" />
-              </LinearGradient>
-            </View>
-
-            {/* Title */}
-            <Text style={styles.title}>Two-Factor Authentication</Text>
-            <Text style={styles.subtitle}>
-              We've sent a 6-digit verification code to your email address
-            </Text>
-
-            {/* Error Message */}
-            {error && (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            )}
-
-            {/* OTP Input */}
-            <View style={styles.form}>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={styles.otpInput}
-                  placeholder="Enter 6-digit code"
-                  value={code}
-                  onChangeText={(value) => {
-                    setCode(value);
-                    if (error) setError('');
-                  }}
-                  keyboardType="numeric"
-                  maxLength={6}
-                  textAlign="center"
-                  autoFocus
-                />
-                <Text style={styles.otpHint}>
-                  Check your email for the verification code
-                </Text>
-              </View>
-
-              {/* Verify Button */}
-              <TouchableOpacity
-                style={[styles.button, isLoading && styles.buttonDisabled]}
-                onPress={handleVerify}
-                disabled={isLoading}
-              >
-                <LinearGradient
-                  colors={['#E1306C', '#F56040']}
-                  style={styles.buttonGradient}
-                >
-                  {isLoading ? (
-                    <ActivityIndicator color="white" />
-                  ) : (
-                    <Text style={styles.buttonText}>Verify & Sign In</Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-
-              {/* Resend Code */}
-              <TouchableOpacity
-                style={styles.linkButton}
-                onPress={handleResendCode}
-              >
-                <Text style={styles.linkText}>Didn't receive the code? Resend</Text>
-              </TouchableOpacity>
-
-              {/* Back to Login */}
-              <TouchableOpacity
-                style={styles.linkButton}
-                onPress={handleBackToLogin}
-              >
-                <View style={styles.backButton}>
-                  <Ionicons name="arrow-back" size={16} color="#E1306C" />
-                  <Text style={styles.linkText}>Back to login</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
-      </LinearGradient>
-    </KeyboardAvoidingView>
+        <Text style={styles.buttonText}>
+          {isLoading ? 'Verifying...' : 'Verify'}
+        </Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity 
+        style={styles.linkButton}
+        onPress={() => navigation.navigate('Login')}
+      >
+        <Text style={styles.linkText}>Back to Login</Text>
+      </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#fff',
   },
-  gradient: {
+  innerContainer: {
     flex: 1,
-  },
-  scrollContainer: {
-    flexGrow: 1,
     justifyContent: 'center',
     padding: 20,
   },
-  content: {
-    alignItems: 'center',
-  },
-  logoContainer: {
-    marginBottom: 30,
-  },
-  logo: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#212529',
-    marginBottom: 8,
     textAlign: 'center',
+    marginBottom: 10,
   },
   subtitle: {
     fontSize: 16,
-    color: '#6c757d',
+    textAlign: 'center',
     marginBottom: 30,
-    textAlign: 'center',
-    lineHeight: 22,
+    color: '#666',
   },
-  form: {
-    width: '100%',
-    maxWidth: 400,
-  },
-  inputContainer: {
-    marginBottom: 30,
-  },
-  otpInput: {
-    height: 60,
-    borderWidth: 2,
-    borderColor: '#dee2e6',
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    fontSize: 24,
-    backgroundColor: '#ffffff',
-    color: '#212529',
-    letterSpacing: 4,
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-  otpHint: {
-    fontSize: 14,
-    color: '#6c757d',
-    textAlign: 'center',
-    marginTop: 12,
-    lineHeight: 20,
-  },
-  button: {
-    height: 50,
-    borderRadius: 25,
-    marginBottom: 20,
-    overflow: 'hidden',
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonGradient: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  linkButton: {
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    padding: 15,
     marginBottom: 15,
-  },
-  linkText: {
-    color: '#E1306C',
+    borderRadius: 8,
     fontSize: 16,
     textAlign: 'center',
+    letterSpacing: 2,
   },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  errorContainer: {
-    backgroundColor: '#f8d7da',
-    borderColor: '#f5c6cb',
-    borderWidth: 1,
+  button: {
+    backgroundColor: '#007AFF',
+    padding: 15,
     borderRadius: 8,
-    padding: 12,
-    marginBottom: 20,
-    width: '100%',
+    alignItems: 'center',
+    marginBottom: 15,
   },
-  errorText: {
-    color: '#721c24',
-    fontSize: 14,
-    textAlign: 'center',
+  buttonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  linkButton: {
+    alignItems: 'center',
+  },
+  linkText: {
+    color: '#007AFF',
+    fontSize: 16,
   },
 });
 

@@ -1,57 +1,23 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  ActivityIndicator,
-  Image,
-} from 'react-native';
-import { getApiUrl, getBaseUrl } from '@/config/network';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Image, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { usePosts } from '@/context/PostsContext';
-import { useSecurity } from '@/context/SecurityContext';
-import { useScreenshotProtection } from '@/hooks/useScreenshotProtection';
 
-const UploadScreen = ({ navigation }: any) => {
-  const [imageUri, setImageUri] = useState<string | null>(null);
+const UploadScreen: React.FC = () => {
   const [caption, setCaption] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const { addPost } = usePosts();
-  const { screenshotProtectionEnabled } = useSecurity();
-
-  // Enable screenshot protection for the upload screen
-  useScreenshotProtection({
-    enabled: screenshotProtectionEnabled,
-    message: 'Screenshots of uploads are not allowed'
-  });
-
-  const requestPermissions = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        'Permission Required',
-        'We need access to your photo library to upload images.',
-        [{ text: 'OK' }]
-      );
-      return false;
-    }
-    return true;
-  };
+  const [selectedImage, setSelectedImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const { createPost, isLoading } = usePosts();
 
   const pickImage = async () => {
-    const hasPermission = await requestPermissions();
-    if (!hasPermission) return;
+    // Request permissions
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant permission to access your photos');
+      return;
+    }
 
+    // Launch image picker
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -59,338 +25,183 @@ const UploadScreen = ({ navigation }: any) => {
       quality: 0.8,
     });
 
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
-      setError('');
+    if (!result.canceled) {
+      setSelectedImage(result.assets[0]);
     }
   };
 
   const takePhoto = async () => {
+    // Request permissions
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(
-        'Permission Required',
-        'We need access to your camera to take photos.',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Permission needed', 'Please grant permission to access your camera');
       return;
     }
 
+    // Launch camera
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
     });
 
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
-      setError('');
+    if (!result.canceled) {
+      setSelectedImage(result.assets[0]);
     }
   };
 
   const handleUpload = async () => {
-    if (!imageUri) {
-      setError('Please select an image');
-      return;
-    }
-    if (!caption.trim()) {
-      setError('Please enter a caption');
+    if (!selectedImage) {
+      Alert.alert('Error', 'Please select an image first');
       return;
     }
 
-    setIsLoading(true);
-    setError('');
-    
-    const result = await addPost(imageUri, caption);
-    
-    if (result.success) {
-      Alert.alert(
-        "Upload Successful",
-        "Your post has been uploaded successfully!",
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              setImageUri(null);
-              setCaption('');
-              navigation.navigate('Feed');
-            },
-          },
-        ]
-      );
-    } else {
-      setError(result.message || 'Upload failed');
-      Alert.alert("Upload Failed", result.message);
-    }
-    setIsLoading(false);
-  };
-
-  const showImagePicker = () => {
-    Alert.alert(
-      "Select Image",
-      "Choose how you want to add an image",
-      [
-        { text: "Camera", onPress: takePhoto },
-        { text: "Photo Library", onPress: pickImage },
-        { text: "Cancel", style: "cancel" },
-      ]
-    );
-  };
-
-  const testConnection = async () => {
     try {
-      const baseUrl = getBaseUrl();
-      console.log('[Network] Testing connection to:', baseUrl);
-      const response = await fetch(baseUrl + '/health/');
-      console.log('[Network] Test response:', response.status);
-      Alert.alert(
-        'Connection Test',
-        `Server responded with status ${response.status}. API URL: ${baseUrl}`
-      );
-    } catch (error: any) {
-      console.error('[Network] Test failed:', error);
-      Alert.alert(
-        'Connection Failed',
-        `Could not reach server at ${getBaseUrl()}. Error: ${error?.message || 'Unknown error'}`
-      );
+      // Create FormData for upload
+      const formData = new FormData();
+      formData.append('image', {
+        uri: selectedImage.uri,
+        type: 'image/jpeg',
+        name: 'photo.jpg',
+      } as any);
+      if (caption.trim()) {
+        formData.append('caption', caption.trim());
+      }
+
+      const result = await createPost(formData);
+      if (result.success) {
+        setCaption('');
+        setSelectedImage(null);
+        Alert.alert('Success', 'Post created successfully!');
+      } else {
+        Alert.alert('Error', result.message || 'Failed to create post');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to upload post');
     }
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <LinearGradient
-        colors={['#ffffff', '#f8f9fa']}
-        style={styles.gradient}
+    <SafeAreaView style={styles.container}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <Text style={styles.title}>Create New Post</Text>
+      
+      {selectedImage ? (
+        <View style={styles.imageContainer}>
+          <Image source={{ uri: selectedImage.uri }} style={styles.selectedImage} />
+          <TouchableOpacity style={styles.changeImageButton} onPress={() => setSelectedImage(null)}>
+            <Text style={styles.changeImageText}>Change Image</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.imagePickerContainer}>
+          <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
+            <Text style={styles.imagePickerText}>📁 Choose from Gallery</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.imagePicker} onPress={takePhoto}>
+            <Text style={styles.imagePickerText}>📷 Take Photo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      
+      <TextInput
+        style={styles.input}
+        placeholder="Write a caption..."
+        value={caption}
+        onChangeText={setCaption}
+        multiline
+        numberOfLines={3}
+      />
+      
+      <TouchableOpacity 
+        style={[styles.button, (!selectedImage || isLoading) && styles.buttonDisabled]}
+        onPress={handleUpload}
+        disabled={!selectedImage || isLoading}
       >
-        {/* Add connection test button */}
-        <TouchableOpacity 
-          style={styles.debugButton}
-          onPress={testConnection}
-        >
-          <Text style={styles.debugButtonText}>Test Connection</Text>
-        </TouchableOpacity>
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
-          <View style={styles.content}>
-            {/* Header */}
-            <View style={styles.header}>
-              <Text style={styles.headerTitle}>Create Post</Text>
-              <Text style={styles.headerSubtitle}>Share your moment with the world</Text>
-            </View>
-
-            {/* Error Message */}
-            {error && (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            )}
-
-            {/* Image Selection */}
-            <View style={styles.imageSection}>
-              {imageUri ? (
-                <View style={styles.imageContainer}>
-                  <Image source={{ uri: imageUri }} style={styles.image} />
-                  <TouchableOpacity
-                    style={styles.changeImageButton}
-                    onPress={showImagePicker}
-                  >
-                    <Ionicons name="camera" size={20} color="white" />
-                    <Text style={styles.changeImageText}>Change</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity style={styles.imagePlaceholder} onPress={showImagePicker}>
-                  <LinearGradient
-                    colors={['#E1306C', '#F56040']}
-                    style={styles.placeholderGradient}
-                  >
-                    <Ionicons name="camera" size={40} color="white" />
-                    <Text style={styles.placeholderText}>Tap to add image</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Caption Input */}
-            <View style={styles.captionSection}>
-              <Text style={styles.captionLabel}>Caption</Text>
-              <TextInput
-                style={styles.captionInput}
-                placeholder="What's happening?"
-                value={caption}
-                onChangeText={(value) => {
-                  setCaption(value);
-                  if (error) setError('');
-                }}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-            </View>
-
-            {/* Upload Button */}
-            <TouchableOpacity
-              style={[styles.button, isLoading && styles.buttonDisabled]}
-              onPress={handleUpload}
-              disabled={isLoading}
-            >
-              <LinearGradient
-                colors={['#E1306C', '#F56040']}
-                style={styles.buttonGradient}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text style={styles.buttonText}>Share Post</Text>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </LinearGradient>
-    </KeyboardAvoidingView>
+        <Text style={styles.buttonText}>
+          {isLoading ? 'Uploading...' : 'Share Post'}
+        </Text>
+      </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#fff',
   },
-  debugButton: {
-    position: 'absolute',
-    top: 40,
-    right: 10,
-    backgroundColor: '#f8f9fa',
-    padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#dee2e6',
-    zIndex: 1000,
-  },
-  debugButtonText: {
-    fontSize: 12,
-    color: '#6c757d',
-  },
-  gradient: {
+  scrollView: {
     flex: 1,
   },
-  scrollContainer: {
-    flexGrow: 1,
+  scrollContent: {
     padding: 20,
   },
-  content: {
-    paddingTop: 50,
-  },
-  header: {
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
     marginBottom: 30,
   },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#212529',
-    marginBottom: 8,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: '#6c757d',
-  },
-  errorContainer: {
-    backgroundColor: '#f8d7da',
-    borderColor: '#f5c6cb',
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
+  imagePickerContainer: {
     marginBottom: 20,
   },
-  errorText: {
-    color: '#721c24',
-    fontSize: 14,
-    textAlign: 'center',
+  imagePicker: {
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 10,
   },
-  imageSection: {
-    marginBottom: 30,
+  imagePickerText: {
+    fontSize: 16,
+    color: '#666',
   },
   imageContainer: {
-    position: 'relative',
-    borderRadius: 12,
-    overflow: 'hidden',
+    marginBottom: 20,
+    alignItems: 'center',
   },
-  image: {
-    width: '100%',
-    aspectRatio: 1,
+  selectedImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 8,
+    marginBottom: 10,
   },
   changeImageButton: {
-    position: 'absolute',
-    bottom: 12,
-    right: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    padding: 10,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 5,
   },
   changeImageText: {
-    color: 'white',
+    color: '#666',
     fontSize: 14,
-    marginLeft: 4,
-    fontWeight: '600',
   },
-  imagePlaceholder: {
-    width: '100%',
-    aspectRatio: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  placeholderGradient: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 8,
-  },
-  captionSection: {
-    marginBottom: 30,
-  },
-  captionLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#212529',
-    marginBottom: 12,
-  },
-  captionInput: {
+  input: {
     borderWidth: 1,
-    borderColor: '#dee2e6',
-    borderRadius: 12,
-    padding: 16,
+    borderColor: '#ddd',
+    padding: 15,
+    marginBottom: 20,
+    borderRadius: 8,
     fontSize: 16,
-    backgroundColor: '#ffffff',
-    color: '#212529',
-    minHeight: 100,
+    textAlignVertical: 'top',
   },
   button: {
-    height: 50,
-    borderRadius: 25,
-    overflow: 'hidden',
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonGradient: {
-    flex: 1,
-    justifyContent: 'center',
+    backgroundColor: '#007AFF',
+    padding: 15,
+    borderRadius: 8,
     alignItems: 'center',
   },
+  buttonDisabled: {
+    backgroundColor: '#ccc',
+  },
   buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '600',
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 
