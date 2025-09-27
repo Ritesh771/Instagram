@@ -108,7 +108,13 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
           </View>
         </View>
 
-       
+        {isOwner && (
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.actionButton} onPress={handleDelete}>
+              <Ionicons name="trash-outline" size={20} color="#dc3545" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Image */}
