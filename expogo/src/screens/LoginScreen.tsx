@@ -19,7 +19,7 @@ type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'
 const LoginScreen: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const { login, isLoading } = useAuth();
+  const { login, isLoading, enableBiometricLogin } = useAuth();
   const navigation = useNavigation<LoginScreenNavigationProp>();
 
   const handleLogin = async () => {
@@ -36,6 +36,28 @@ const LoginScreen: React.FC = () => {
       } else {
         Alert.alert('Login Failed', result.message || 'An unknown error occurred.');
       }
+    } else {
+      // Successful login, offer to enable biometric app lock
+      Alert.alert(
+        'Enable App Lock',
+        'Would you like to enable biometric app lock? This will require biometric authentication every time you open the app.',
+        [
+          { text: 'Not Now', style: 'cancel' },
+          { 
+            text: 'Enable', 
+            onPress: async () => {
+              console.log('User chose to enable app lock');
+              const enableResult = await enableBiometricLogin(username, password);
+              console.log('Enable result:', enableResult);
+              if (enableResult.success) {
+                Alert.alert('Success', 'App lock enabled! The app will now require biometric authentication when reopened.');
+              } else {
+                Alert.alert('Error', 'Failed to enable app lock');
+              }
+            }
+          }
+        ]
+      );
     }
   };
 

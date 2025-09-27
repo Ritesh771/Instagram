@@ -115,7 +115,7 @@ class ResetPasswordConfirmSerializer(serializers.Serializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_verified', 'two_factor_enabled', 'bio', 'profile_pic']
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_verified', 'two_factor_enabled', 'bio', 'profile_pic', 'biometric_enabled']
         read_only_fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_verified']
 
 

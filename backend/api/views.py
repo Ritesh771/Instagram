@@ -342,7 +342,11 @@ class ProfileView(APIView):
 
     def patch(self, request):
         """Update current user's profile"""
-        serializer = UserSerializer(request.user, data=request.data, partial=True)
+        # Allow updating bio, two_factor_enabled, and biometric_enabled
+        allowed_fields = {'bio', 'two_factor_enabled', 'biometric_enabled'}
+        update_data = {k: v for k, v in request.data.items() if k in allowed_fields}
+        
+        serializer = UserSerializer(request.user, data=update_data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)

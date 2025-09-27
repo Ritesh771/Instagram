@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 import { Storage } from '@/utils/storage';
+import * as LocalAuthentication from 'expo-local-authentication';
 
 // Types matching backend models
 export interface User {
@@ -166,6 +167,127 @@ class ApiService {
 
   async getProfile(): Promise<any> {
     return this.api.get('/auth/profile/');
+  }
+
+  // Biometric authentication methods
+  async isBiometricAvailable(): Promise<{ available: boolean; types: LocalAuthentication.AuthenticationType[] }> {
+    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+    const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+    
+    console.log('Biometric availability:', { hasHardware, isEnrolled, supportedTypes });
+    
+    return {
+      available: hasHardware && isEnrolled,
+      types: supportedTypes
+    };
+  }
+
+  async authenticateWithBiometrics(reason?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: reason || 'Authenticate to continue',
+        fallbackLabel: 'Use password',
+        disableDeviceFallback: false,
+      });
+      
+      return { success: result.success };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Biometric authentication failed' };
+    }
+  }
+
+  async saveBiometricCredentials(username: string, password: string): Promise<void> {
+    // Store credentials securely for biometric login
+    await Storage.setItem('biometric_username', username);
+    await Storage.setItem('biometric_password', password);
+    await Storage.setItem('biometric_enabled', 'true');
+  }
+
+  async getBiometricCredentials(): Promise<{ username: string; password: string } | null> {
+    const enabled = await Storage.getItem('biometric_enabled');
+    if (enabled !== 'true') return null;
+    
+    const username = await Storage.getItem('biometric_username');
+    const password = await Storage.getItem('biometric_password');
+    
+    if (username && password) {
+      return { username, password };
+    }
+    return null;
+  }
+
+  async enableBiometricLogin(): Promise<{ success: boolean; message?: string }> {
+    try {
+      console.log('Enabling biometric login in backend...');
+      const response = await this.api.patch('/auth/profile/', { biometric_enabled: true });
+      console.log('Backend biometric enable response:', response.data);
+      return { success: true, message: 'Biometric login enabled' };
+    } catch (error) {
+      console.error('Failed to enable biometric login in backend:', error);
+      const apiError = this.handleError(error);
+      return { success: false, message: apiError.message };
+    }
+  }
+
+  async disableBiometricLogin(): Promise<{ success: boolean; message?: string }> {
+    try {
+      console.log('Disabling biometric login in backend...');
+      const response = await this.api.patch('/auth/profile/', { biometric_enabled: false });
+      console.log('Backend biometric disable response:', response.data);
+      return { success: true, message: 'Biometric login disabled' };
+    } catch (error) {
+      console.error('Failed to disable biometric login in backend:', error);
+      const apiError = this.handleError(error);
+      return { success: false, message: apiError.message };
+    }
+  }
+
+  async getBiometricStatus(): Promise<{ enabled: boolean }> {
+    try {
+      const response = await this.api.get('/auth/profile/');
+      return { enabled: response.data.biometric_enabled || false };
+    } catch (error) {
+      console.error('Failed to get biometric status:', error);
+      return { enabled: false };
+    }
+  }
+
+  async disableBiometricLoginLocally(): Promise<void> {
+    await Storage.removeItem('biometric_username');
+    await Storage.removeItem('biometric_password');
+    await Storage.removeItem('biometric_enabled');
+  }
+
+  async biometricLogin(): Promise<{ success: boolean; requires2FA?: boolean; message?: string; user?: User }> {
+    try {
+      console.log('Starting biometric login...');
+      
+      // First check if biometrics are enabled for current user in backend
+      const backendStatus = await this.getBiometricStatus();
+      console.log('Backend biometric status:', backendStatus);
+      
+      if (!backendStatus.enabled) {
+        return { success: false, message: 'Biometric login not enabled for this user' };
+      }
+      
+      // First authenticate with biometrics
+      const biometricResult = await this.authenticateWithBiometrics('Unlock App');
+      console.log('Biometric authentication result:', biometricResult);
+      
+      if (!biometricResult.success) {
+        return { success: false, message: 'Biometric authentication failed' };
+      }
+
+      // For app unlock, we don't need to login again - just return success
+      // The AuthContext will handle unlocking the app
+      console.log('Biometric authentication successful - app unlocked');
+      return { success: true };
+    } catch (error) {
+      console.error('Biometric login error:', error);
+      const apiError = this.handleError(error);
+      return { success: false, message: apiError.message };
+    }
   }
 
   // Posts endpoints
