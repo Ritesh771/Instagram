@@ -99,6 +99,10 @@ const Login: React.FC = () => {
   };
 
   const handleOtpChange = (field: string, value: string) => {
+    if (field === 'code') {
+      // Only allow digits for the code field
+      value = value.replace(/\D/g, '');
+    }
     setOtpData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -183,6 +187,8 @@ const Login: React.FC = () => {
                   onChange={(e) => handleOtpChange('code', e.target.value)}
                   className={`text-center text-lg tracking-widest ${errors.code ? 'border-red-500' : ''}`}
                   maxLength={6}
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
                   required
                 />
                 {errors.code && (

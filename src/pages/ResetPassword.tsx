@@ -90,6 +90,11 @@ const ResetPassword: React.FC = () => {
   };
 
   const handleInputChange = (field: string, value: string) => {
+    // For code field, only allow digits
+    if (field === 'code') {
+      value = value.replace(/\D/g, '');
+    }
+    
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -138,6 +143,8 @@ const ResetPassword: React.FC = () => {
                 onChange={(e) => handleInputChange('code', e.target.value)}
                 className={`text-center text-lg tracking-widest ${errors.code ? 'border-red-500' : ''}`}
                 maxLength={6}
+                inputMode="numeric"
+                pattern="[0-9]{6}"
                 required
               />
               {errors.code && (

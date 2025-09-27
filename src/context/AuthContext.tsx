@@ -5,15 +5,16 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<{ success: boolean; requires2FA?: boolean; message?: string }>;
-  verify2FA: (username: string, code: string) => Promise<{ success: boolean; message?: string }>;
-  register: (username: string, email: string, password: string) => Promise<{ success: boolean; message?: string }>;
-  verifyOTP: (email: string, code: string) => Promise<{ success: boolean; message?: string }>;
-  requestPasswordReset: (email: string) => Promise<{ success: boolean; message?: string }>;
-  confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<{ success: boolean; message?: string }>;
+  login: (username: string, password: string) => Promise<{ success: boolean; requires2FA?: boolean; message?: string; details?: Record<string, string[]> }>;
+  verify2FA: (username: string, code: string) => Promise<{ success: boolean; message?: string; details?: Record<string, string[]> }>;
+  register: (firstName: string, lastName: string, email: string, password: string) => Promise<{ success: boolean; message?: string; username?: string; details?: Record<string, string[]> }>;
+  verifyOTP: (email: string, code: string) => Promise<{ success: boolean; message?: string; details?: Record<string, string[]> }>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; message?: string; details?: Record<string, string[]> }>;
+  confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<{ success: boolean; message?: string; details?: Record<string, string[]> }>;
   logout: () => void;
   updateUser: (userData: Partial<User>) => void;
-  updateProfile: (data: { bio?: string; two_factor_enabled?: boolean }) => Promise<{ success: boolean; message?: string }>;
+  updateProfile: (data: { bio?: string; two_factor_enabled?: boolean }) => Promise<{ success: boolean; message?: string; details?: Record<string, string[]> }>;
+  getUsernamePreview: (firstName: string, lastName: string, email: string) => Promise<{ success: boolean; username?: string; message?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -73,7 +74,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { success: true };
     } catch (error) {
       const apiError = apiService.handleError(error);
-      return { success: false, message: apiError.message };
+      return { success: false, message: apiError.message, details: apiError.details };
     } finally {
       setIsLoading(false);
     }
@@ -97,14 +98,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const register = async (username: string, email: string, password: string) => {
+  const register = async (firstName: string, lastName: string, email: string, password: string) => {
     try {
       setIsLoading(true);
-      const response = await apiService.register({ username, email, password });
-      return { success: true, message: response.data.detail };
+      const response = await apiService.register({ first_name: firstName, last_name: lastName, email, password });
+      return { success: true, message: response.data.detail, username: response.data.username };
     } catch (error) {
       const apiError = apiService.handleError(error);
-      return { success: false, message: apiError.message };
+      return { success: false, message: apiError.message, details: apiError.details };
     } finally {
       setIsLoading(false);
     }
@@ -117,7 +118,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { success: true, message: response.data.detail };
     } catch (error) {
       const apiError = apiService.handleError(error);
-      return { success: false, message: apiError.message };
+      return { success: false, message: apiError.message, details: apiError.details };
     } finally {
       setIsLoading(false);
     }
@@ -130,7 +131,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { success: true, message: response.data.detail };
     } catch (error) {
       const apiError = apiService.handleError(error);
-      return { success: false, message: apiError.message };
+      return { success: false, message: apiError.message, details: apiError.details };
     } finally {
       setIsLoading(false);
     }
@@ -139,11 +140,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const confirmPasswordReset = async (email: string, code: string, newPassword: string) => {
     try {
       setIsLoading(true);
-      const response = await apiService.confirmPasswordReset({ email, code, newPassword });
+      const response = await apiService.confirmPasswordReset({ email, code, new_password: newPassword });
       return { success: true, message: response.data.detail };
     } catch (error) {
       const apiError = apiService.handleError(error);
-      return { success: false, message: apiError.message };
+      return { success: false, message: apiError.message, details: apiError.details };
     } finally {
       setIsLoading(false);
     }
@@ -171,9 +172,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { success: true };
     } catch (error) {
       const apiError = apiService.handleError(error);
-      return { success: false, message: apiError.message };
+      return { success: false, message: apiError.message, details: apiError.details };
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const getUsernamePreview = async (firstName: string, lastName: string, email: string) => {
+    try {
+      const response = await apiService.getUsernamePreview({ first_name: firstName, last_name: lastName, email });
+      return { success: true, username: response.data.username };
+    } catch (error) {
+      const apiError = apiService.handleError(error);
+      return { success: false, message: apiError.message };
     }
   };
 
@@ -190,6 +201,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
     updateUser,
     updateProfile,
+    getUsernamePreview,
   };
 
   return (

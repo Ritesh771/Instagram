@@ -1,5 +1,5 @@
 import React from 'react';
-import { Heart, MessageCircle, Send, Bookmark, User, Trash2, MoreVertical } from 'lucide-react';
+import { Heart, User, Trash2, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -14,7 +14,7 @@ interface PostCardProps {
 }
 
 const PostCard: React.FC<PostCardProps> = ({ post }) => {
-  const { deletePost } = usePosts();
+  const { deletePost, likePost, unlikePost } = usePosts();
   const { user } = useAuth();
   const { toast } = useToast();
   const isOwner = user?.id === post.user.id;
@@ -32,6 +32,29 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
       toast({
         title: "Delete Failed",
         description: result.message || "Failed to delete post",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleLike = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to like posts.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const result = post.is_liked 
+      ? await unlikePost(post.id)
+      : await likePost(post.id);
+
+    if (!result.success) {
+      toast({
+        title: "Like Failed",
+        description: result.message || "Failed to update like",
         variant: "destructive",
       });
     }
@@ -74,10 +97,6 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
           </Link>
           
           <div className="flex items-center space-x-2">
-            <Button variant="ghost" size="sm">
-              <Bookmark className="h-4 w-4" />
-            </Button>
-            
             {isOwner && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -118,18 +137,28 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
             <Button
               variant="ghost"
               size="sm"
-              className="p-0 text-muted-foreground hover:text-like-heart transition-colors"
+              className="p-0 transition-colors"
+              onClick={handleLike}
             >
-              <Heart className="h-6 w-6" />
-            </Button>
-            <Button variant="ghost" size="sm" className="p-0 text-muted-foreground hover:text-foreground">
-              <MessageCircle className="h-6 w-6" />
-            </Button>
-            <Button variant="ghost" size="sm" className="p-0 text-muted-foreground hover:text-foreground">
-              <Send className="h-6 w-6" />
+              <Heart 
+                className={`h-6 w-6 ${
+                  post.is_liked 
+                    ? 'fill-red-500 text-red-500' 
+                    : 'text-muted-foreground hover:text-red-500'
+                }`} 
+              />
             </Button>
           </div>
         </div>
+
+        {/* Likes Count */}
+        {post.likes_count > 0 && (
+          <div className="px-4 pb-2">
+            <p className="text-sm font-semibold text-foreground">
+              {post.likes_count} {post.likes_count === 1 ? 'like' : 'likes'}
+            </p>
+          </div>
+        )}
 
         {/* Caption */}
         <div className="px-4 pb-4">

@@ -12,14 +12,43 @@ from .models import User, Post, OTP, Like
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+    first_name = serializers.CharField(required=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = User
-        fields = ['username', 'email', 'password']
+        fields = ['first_name', 'last_name', 'email', 'password']
 
     def create(self, validated_data):
+        first_name = validated_data.pop('first_name')
+        last_name = validated_data.pop('last_name', '')
         password = validated_data.pop('password')
-        user = User(**validated_data)
+        
+        # Generate username from first and last name
+        if last_name.strip():
+            base_username = f"{first_name.lower()}{last_name.lower()}"
+        else:
+            base_username = first_name.lower()
+        
+        username = base_username
+        
+        # Check if username exists, if so use email prefix as username
+        if User.objects.filter(username=username).exists():
+            email = validated_data.get('email', '')
+            username = email.split('@')[0] if '@' in email else base_username
+            # If email prefix also exists, keep trying with counter (fallback)
+            counter = 1
+            original_username = username
+            while User.objects.filter(username=username).exists():
+                username = f"{original_username}{counter}"
+                counter += 1
+        
+        user = User(
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            **validated_data
+        )
         user.set_password(password)
         user.is_active = True
         user.save()
@@ -86,8 +115,8 @@ class ResetPasswordConfirmSerializer(serializers.Serializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'is_verified', 'two_factor_enabled', 'bio', 'profile_pic']
-        read_only_fields = ['id', 'username', 'email', 'is_verified']
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_verified', 'two_factor_enabled', 'bio', 'profile_pic']
+        read_only_fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_verified']
 
 
 class PostSerializer(serializers.ModelSerializer):
