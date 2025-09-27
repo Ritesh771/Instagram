@@ -1,33 +1,12 @@
-// Network Configuration for Development
-// Update this file when switching networks
+// Network configuration for different environments
+export const getApiUrl = (): string => {
+  // For development, use the local IP address that the device can reach
+  // This should be the IP address of your development machine
+  const API_BASE_URL = 'http://192.168.31.177:8000/api';
 
-export const NETWORK_CONFIG = {
-  // Current network IP address
-  // Update this when you change networks or use mobile hotspot
-  API_BASE_URL: 'http://192.168.0.102:8000/api',
-  
-  // Alternative configurations for different networks
-  // Uncomment the one you're using and comment out the others
-  
-  // For home WiFi (current)
-  // API_BASE_URL: 'http://192.168.0.101:8000/api',
-  
-  // For mobile hotspot (example - update with your hotspot IP)
-  // API_BASE_URL: 'http://192.168.43.1:8000/api',
-  
-  // For office WiFi (example - update with your office IP)
-  // API_BASE_URL: 'http://192.168.1.100:8000/api',
-  
-  // For localhost (when testing on same machine)
-  // API_BASE_URL: 'http://localhost:8000/api',
+  return API_BASE_URL;
 };
 
-// Helper function to get the current API URL
-export const getApiUrl = () => {
-  return NETWORK_CONFIG.API_BASE_URL;
-};
-
-// Helper function to get the base URL without /api
-export const getBaseUrl = () => {
-  return NETWORK_CONFIG.API_BASE_URL.replace('/api', '');
+export const getBaseUrl = (): string => {
+  return 'http://192.168.31.177:8000';
 };

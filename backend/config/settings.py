@@ -28,7 +28,7 @@ SECRET_KEY = 'dev-secret-key-change-me-in-production'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2', '192.168.0.102', '0.0.0.0', '*']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2', '192.168.0.102', '192.168.31.177', '192.168.31.227', '0.0.0.0', '*']
 
 
 # Application definition
@@ -52,7 +52,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
+    # 'django.middleware.csrf.CsrfViewMiddleware',  # Disabled for development - React Native doesn't handle CSRF tokens well
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -159,29 +159,31 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:8081",
     "http://127.0.0.1:8081",
-    
+
     # Android Emulator
     "http://10.0.2.2:8081",
     "http://10.0.2.2:19000",
     "http://10.0.2.2:19006",
     "exp://10.0.2.2:8081",
     "exp://10.0.2.2:19000",
-    
-    # Your local network
-    "http://192.168.0.102:8081",
-    "http://192.168.0.102:19000",
-    "exp://192.168.0.102:8081",
-    "exp://192.168.0.102:19000",
-    
+
+    # Your local network - current IP
+    "http://192.168.31.177:8081",
+    "http://192.168.31.177:19000",
+    "http://192.168.31.227:8081",
+    "http://192.168.31.227:19000",
+    "exp://192.168.31.177:8081",
+    "exp://192.168.31.177:19000",
+    "exp://192.168.31.227:8081",
+    "exp://192.168.31.227:19000",
+
     # Expo Go URLs
     "exp://localhost:19000",
     "exp://localhost:8081",
     "exp://127.0.0.1:8081"
 ]
 
-# Additional CORS settings
-CORS_ALLOW_ALL_ORIGINS = True  # For development only
-CORS_ALLOW_CREDENTIALS = True
+# CORS settings
 CORS_ALLOW_METHODS = [
     'DELETE',
     'GET',
@@ -200,20 +202,7 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
-    'x-platform'  # Added for platform identification
-]
-
-# Additional CORS headers for mobile development
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
+    'x-platform',  # Added for platform identification
     'access-control-allow-origin',
     'access-control-allow-headers',
     'access-control-allow-methods',

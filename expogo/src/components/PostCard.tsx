@@ -12,9 +12,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { usePosts } from '@/context/PostsContext';
 import { useAuth } from '@/context/AuthContext';
-import { useSecurity } from '@/context/SecurityContext';
-import { useScreenshotProtection } from '@/hooks/useScreenshotProtection';
-import { getBaseUrl } from '@/config/network';
 import { Post, apiService } from '@/services/api';
 
 interface PostCardProps {
@@ -24,20 +21,13 @@ interface PostCardProps {
 const { width } = Dimensions.get('window');
 
 const PostCard: React.FC<PostCardProps> = ({ post }) => {
-  const { deletePost, updatePost } = usePosts();
+  const { deletePost } = usePosts();
   const { user } = useAuth();
-  const { screenshotProtectionEnabled } = useSecurity();
   const isOwner = user?.id === post.user.id;
-  
+
   // Local state for like status
   const [isLiked, setIsLiked] = useState(post.is_liked);
   const [likesCount, setLikesCount] = useState(post.likes_count);
-
-  // Enable screenshot protection for posts
-  const { showWarning, isProtected } = useScreenshotProtection({
-    enabled: screenshotProtectionEnabled,
-    message: 'Screenshots of posts are not allowed'
-  });
 
   const handleLike = async () => {
     if (!user) {
@@ -52,15 +42,9 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
       } else {
         response = await apiService.likePost(post.id);
       }
-      
+
       setIsLiked(response.data.liked);
       setLikesCount(response.data.likes_count);
-      
-      // Update the post in the context
-      updatePost(post.id, {
-        is_liked: response.data.liked,
-        likes_count: response.data.likes_count
-      });
     } catch (error) {
       console.error('Like error:', error);
       Alert.alert("Error", "Failed to update like status");
@@ -69,15 +53,15 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
 
   const handleDelete = async () => {
     if (!isOwner) return;
-    
+
     Alert.alert(
       "Delete Post",
       "Are you sure you want to delete this post?",
       [
         { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive", 
+        {
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             const result = await deletePost(post.id);
             if (!result.success) {
@@ -93,7 +77,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
     const now = new Date();
     const postTime = new Date(timestamp);
     const diffInMinutes = Math.floor((now.getTime() - postTime.getTime()) / (1000 * 60));
-    
+
     if (diffInMinutes < 1) return 'just now';
     if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
     if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
@@ -104,7 +88,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
     if (imagePath.startsWith('http')) {
       return imagePath;
     }
-    return `${getBaseUrl()}${imagePath}`;
+    return `http://192.168.31.177:8000${imagePath}`;
   };
 
   return (
@@ -123,27 +107,8 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
             <Text style={styles.timestamp}>{formatTimestamp(post.created_at)}</Text>
           </View>
         </View>
-        
-        <View style={styles.headerActions}>
-          {screenshotProtectionEnabled && (
-            <TouchableOpacity 
-              style={styles.protectionButton}
-              onPress={showWarning}
-            >
-              <Ionicons name="shield-checkmark" size={16} color="#E1306C" />
-            </TouchableOpacity>
-          )}
-          
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="bookmark-outline" size={20} color="#6c757d" />
-          </TouchableOpacity>
-          
-          {isOwner && (
-            <TouchableOpacity style={styles.actionButton} onPress={handleDelete}>
-              <Ionicons name="trash-outline" size={20} color="#dc3545" />
-            </TouchableOpacity>
-          )}
-        </View>
+
+       
       </View>
 
       {/* Image */}
@@ -159,17 +124,11 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
       <View style={styles.actions}>
         <View style={styles.leftActions}>
           <TouchableOpacity style={styles.actionButton} onPress={handleLike}>
-            <Ionicons 
-              name={isLiked ? "heart" : "heart-outline"} 
-              size={24} 
-              color={isLiked ? "#E1306C" : "#6c757d"} 
+            <Ionicons
+              name={isLiked ? "heart" : "heart-outline"}
+              size={24}
+              color={isLiked ? "#E1306C" : "#6c757d"}
             />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="chatbubble-outline" size={24} color="#6c757d" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="send-outline" size={24} color="#6c757d" />
           </TouchableOpacity>
         </View>
       </View>
@@ -248,12 +207,6 @@ const styles = StyleSheet.create({
   actionButton: {
     padding: 8,
     marginLeft: 4,
-  },
-  protectionButton: {
-    padding: 6,
-    marginRight: 4,
-    backgroundColor: 'rgba(225, 48, 108, 0.1)',
-    borderRadius: 12,
   },
   imageContainer: {
     width: '100%',
