@@ -14,6 +14,10 @@ from pathlib import Path
 from datetime import timedelta
 import ssl
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -164,6 +168,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://10.0.2.2:8081",
     "http://10.0.2.2:19000",
     "http://10.0.2.2:19006",
+    "http://10.104.83.65:8081",
     "exp://10.0.2.2:8081",
     "exp://10.0.2.2:19000",
 
@@ -176,6 +181,7 @@ CORS_ALLOWED_ORIGINS = [
     "exp://192.168.31.177:19000",
     "exp://192.168.31.227:8081",
     "exp://192.168.31.227:19000",
+    "exp://10.104.83.65:8081",
 
     # Expo Go URLs
     "exp://localhost:19000",
@@ -215,17 +221,17 @@ STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Email configuration for development
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# Email configuration
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 465
-EMAIL_USE_TLS = False
-EMAIL_USE_SSL = True
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_USE_SSL = False
 
-# SSL Certificate Handling for development
-EMAIL_SSL_CONTEXT = ssl._create_unverified_context()
+# Email credentials from environment variables
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
-# Environment Variable Integration
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER or 'noreply@yourdomain.com'
+if not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD:
+    print('Warning: Email credentials not configured. Please set EMAIL_HOST_USER and EMAIL_HOST_PASSWORD environment variables.')
