@@ -53,12 +53,28 @@ class RegisterView(APIView):
         print(f"OTP for {user.email}: {code}")  # Development debugging
 
         try:
+            html_message = f"""
+                <html>
+                    <body style="font-family: Arial, sans-serif; padding: 20px;">
+                        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+                            <h2 style="color: #333; margin-bottom: 20px;">Account Verification Code</h2>
+                            <p style="color: #666; font-size: 16px;">Welcome! Please verify your account using this code:</p>
+                            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; text-align: center; font-size: 24px; letter-spacing: 5px; margin: 20px 0;">
+                                <strong>{code}</strong>
+                            </div>
+                            <p style="color: #666; font-size: 14px;">This code will expire in 10 minutes.</p>
+                            <p style="color: #999; font-size: 12px; margin-top: 30px;">If you didn't create an account, please ignore this email.</p>
+                        </div>
+                    </body>
+                </html>
+                """
             send_mail(
-                subject='Your verification code',
-                message=f'Your OTP is {code}. It expires in 10 minutes.',
-                from_email=None,
+                subject='Verify Your Account',
+                message=f'Your verification code is: {code}. It expires in 10 minutes.',
+                from_email=None,  # Uses DEFAULT_FROM_EMAIL from settings
                 recipient_list=[user.email],
                 fail_silently=False,
+                html_message=html_message
             )
             print(f"Verification email sent to {user.email}")
         except Exception as e:
@@ -113,14 +129,29 @@ class LoginView(APIView):
             )
             print(f"2FA OTP for {user.email}: {code}")  # Development debugging
             try:
+                html_message = f"""
+                <html>
+                    <body style="font-family: Arial, sans-serif; padding: 20px;">
+                        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+                            <h2 style="color: #333; margin-bottom: 20px;">Login Verification Code</h2>
+                            <p style="color: #666; font-size: 16px;">Your verification code is:</p>
+                            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; text-align: center; font-size: 24px; letter-spacing: 5px; margin: 20px 0;">
+                                <strong>{code}</strong>
+                            </div>
+                            <p style="color: #666; font-size: 14px;">This code will expire in 10 minutes.</p>
+                            <p style="color: #999; font-size: 12px; margin-top: 30px;">If you didn't request this code, please ignore this email.</p>
+                        </div>
+                    </body>
+                </html>
+                """
                 send_mail(
-                    subject='Your login verification code',
-                    message=f'Your OTP is {code}. It expires in 10 minutes.',
-                    from_email=None,
+                    subject='Login Verification Code',
+                    message=f'Your verification code is: {code}. It expires in 10 minutes.',
+                    from_email=None,  # Uses DEFAULT_FROM_EMAIL from settings
                     recipient_list=[user.email],
                     fail_silently=False,
+                    html_message=html_message
                 )
-                print(f"2FA email sent to {user.email}")
             except Exception as e:
                 print(f"Failed to send 2FA email to {user.email}: {e}")
                 return Response({'error': 'Failed to send 2FA email'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -212,12 +243,28 @@ class ResetPasswordRequestView(APIView):
         )
         print(f"Password reset OTP for {user.email}: {code}")  # Development debugging
         try:
+            html_message = f"""
+                <html>
+                    <body style="font-family: Arial, sans-serif; padding: 20px;">
+                        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+                            <h2 style="color: #333; margin-bottom: 20px;">Password Reset Code</h2>
+                            <p style="color: #666; font-size: 16px;">You requested to reset your password. Use this code to continue:</p>
+                            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; text-align: center; font-size: 24px; letter-spacing: 5px; margin: 20px 0;">
+                                <strong>{code}</strong>
+                            </div>
+                            <p style="color: #666; font-size: 14px;">This code will expire in 10 minutes.</p>
+                            <p style="color: #999; font-size: 12px; margin-top: 30px;">If you didn't request a password reset, please ignore this email and ensure your account is secure.</p>
+                        </div>
+                    </body>
+                </html>
+                """
             send_mail(
-                subject='Password reset code',
-                message=f'Your OTP is {code}. It expires in 10 minutes.',
-                from_email=None,
+                subject='Reset Your Password',
+                message=f'Your password reset code is: {code}. It expires in 10 minutes.',
+                from_email=None,  # Uses DEFAULT_FROM_EMAIL from settings
                 recipient_list=[user.email],
                 fail_silently=False,
+                html_message=html_message
             )
             print(f"Password reset email sent to {user.email}")
         except Exception as e:
