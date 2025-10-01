@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 
 from rest_framework import serializers
 
-from .models import User, Post, OTP, Like
+from .models import User, Post, OTP, Like, Follow, FollowRequest
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -134,3 +134,10 @@ class PostSerializer(serializers.ModelSerializer):
             return obj.likes.filter(user=request.user).exists()
         return False
 
+class FollowRequestSerializer(serializers.ModelSerializer):
+    requester = UserSerializer(read_only=True)
+
+    class Meta:
+        model = FollowRequest
+        fields = ['id', 'requester', 'created_at']
+        read_only_fields = ['id', 'requester', 'created_at']

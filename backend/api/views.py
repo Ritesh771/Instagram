@@ -18,7 +18,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import User, Post, OTP, Like
+from .models import User, Post, OTP, Like, Follow, FollowRequest
 from .serializers import (
     RegisterSerializer,
     VerifyOTPSerializer,
@@ -616,3 +616,164 @@ class BiometricAuthenticateView(APIView):
         except Exception as e:
             print(f"Biometric authentication error: {e}")
             return Response({'error': 'Biometric authentication failed'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# Follow System Views
+class FollowUserView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, user_id):
+        try:
+            to_follow = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        if request.user == to_follow:
+            return Response({'error': 'Cannot follow yourself'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if Follow.objects.filter(follower=request.user, followed=to_follow).exists():
+            return Response({'error': 'Already following'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if FollowRequest.objects.filter(requester=request.user, recipient=to_follow).exists():
+            return Response({'error': 'Follow request already sent'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if to_follow.is_private:
+            FollowRequest.objects.create(requester=request.user, recipient=to_follow)
+            return Response({'detail': 'Follow request sent'}, status=status.HTTP_200_OK)
+        else:
+            Follow.objects.create(follower=request.user, followed=to_follow)
+            return Response({'followed': True}, status=status.HTTP_200_OK)
+
+
+class UnfollowUserView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, user_id):
+        try:
+            target = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        follow = Follow.objects.filter(follower=request.user, followed=target)
+        if follow.exists():
+            follow.delete()
+            return Response({'detail': 'Unfollowed'}, status=status.HTTP_200_OK)
+        
+        req = FollowRequest.objects.filter(requester=request.user, recipient=target)
+        if req.exists():
+            req.delete()
+            return Response({'detail': 'Follow request cancelled'}, status=status.HTTP_200_OK)
+        
+        return Response({'error': 'Not following or requested'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FollowersListView(generics.ListAPIView):
+    serializer_class = UserSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        user_id = self.kwargs['user_id']
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return User.objects.none()
+        
+        # Check privacy settings
+        if user.is_private and not Follow.objects.filter(follower=self.request.user, followed=user).exists() and user != self.request.user:
+            return User.objects.none()
+        
+        follower_ids = Follow.objects.filter(followed_id=user_id).values_list('follower_id', flat=True)
+        return User.objects.filter(id__in=follower_ids)
+
+
+class FollowingListView(generics.ListAPIView):
+    serializer_class = UserSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        user_id = self.kwargs['user_id']
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return User.objects.none()
+        
+        # Check privacy settings
+        if user.is_private and not Follow.objects.filter(follower=self.request.user, followed=user).exists() and user != self.request.user:
+            return User.objects.none()
+        
+        following_ids = Follow.objects.filter(follower_id=user_id).values_list('followed_id', flat=True)
+        return User.objects.filter(id__in=following_ids)
+
+
+class UserPostsListView(generics.ListAPIView):
+    serializer_class = PostSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        user_id = self.kwargs['user_id']
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Post.objects.none()
+        
+        # Check privacy settings
+        if user.is_private and not Follow.objects.filter(follower=self.request.user, followed=user).exists() and user != self.request.user:
+            return Post.objects.none()
+        
+        return Post.objects.filter(user_id=user_id).select_related('user').order_by('-created_at')
+
+
+class UserDetailView(generics.RetrieveAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        user = self.get_object()
+        if user.is_private and not Follow.objects.filter(follower=request.user, followed=user).exists() and user != request.user:
+            return Response({'detail': 'This account is private'}, status=status.HTTP_403_FORBIDDEN)
+        return super().get(request, *args, **kwargs)
+
+
+class PendingFollowRequestsView(generics.ListAPIView):
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        requester_ids = FollowRequest.objects.filter(recipient=self.request.user).values_list('requester_id', flat=True)
+        return User.objects.filter(id__in=requester_ids)
+
+
+class AcceptFollowRequestView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, requester_id):
+        try:
+            requester = User.objects.get(id=requester_id)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        req = FollowRequest.objects.filter(requester=requester, recipient=request.user)
+        if not req.exists():
+            return Response({'error': 'No follow request found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        Follow.objects.create(follower=requester, followed=request.user)
+        req.delete()
+        return Response({'detail': 'Follow request accepted'})
+
+
+class RejectFollowRequestView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, requester_id):
+        try:
+            requester = User.objects.get(id=requester_id)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        req = FollowRequest.objects.filter(requester=requester, recipient=request.user)
+        if req.exists():
+            req.delete()
+            return Response({'detail': 'Follow request rejected'})
+        
+        return Response({'error': 'No follow request found'}, status=status.HTTP_404_NOT_FOUND)

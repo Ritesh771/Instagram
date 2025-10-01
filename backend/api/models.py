@@ -12,9 +12,20 @@ class User(AbstractUser):
     biometric_action = models.CharField(max_length=20, blank=True, null=True)
     bio = models.TextField(blank=True, null=True)
     profile_pic = models.ImageField(upload_to='profiles/', blank=True, null=True)
+    is_private = models.BooleanField(default=True)
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['email']
+
+    @property
+    def followers_count(self):
+        """Returns the number of users following this user."""
+        return self.followers.count()  # Uses related_name='followers' from Follow model
+
+    @property
+    def following_count(self):
+        """Returns the number of users this user is following."""
+        return self.following.count()
 
     def __str__(self) -> str:
         return self.username
@@ -75,3 +86,28 @@ class Like(models.Model):
 
     def __str__(self) -> str:
         return f"Like by {self.user.username} on Post({self.post.id})"
+
+
+class Follow(models.Model):
+    follower = models.ForeignKey('api.User', on_delete=models.CASCADE, related_name='following')
+    followed = models.ForeignKey('api.User', on_delete=models.CASCADE, related_name='followers')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['follower', 'followed']
+        ordering = ['-created_at']
+
+    def __str__(self) -> str:
+        return f"{self.follower.username} follows {self.followed.username}"
+
+
+class FollowRequest(models.Model):
+    requester = models.ForeignKey('api.User', on_delete=models.CASCADE, related_name='sent_requests')
+    recipient = models.ForeignKey('api.User', on_delete=models.CASCADE, related_name='received_requests')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['requester', 'recipient']
+
+    def __str__(self) -> str:
+        return f"{self.requester.username} requested to follow {self.recipient.username}"

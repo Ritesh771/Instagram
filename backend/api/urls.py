@@ -17,7 +17,13 @@ from .views import (
     UsernamePreviewView,
     BiometricChallengeView,
     BiometricRegisterView,
-    BiometricAuthenticateView
+    BiometricAuthenticateView,
+    UserDetailView,  #for viewing user profiles with privacy
+    PendingFollowRequestsView,  # Newly added for listing pending requests
+    AcceptFollowRequestView,  # Newly added for accepting requests
+    RejectFollowRequestView,
+    FollowUserView,
+    UnfollowUserView,
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -47,5 +53,11 @@ urlpatterns = [
     path('posts/', PostListCreateView.as_view(), name='posts'),
     path('posts/<int:pk>/', PostDeleteView.as_view(), name='post-delete'),
     path('posts/<int:post_id>/like/', LikePostView.as_view(), name='post-like'),
+    path('users/<int:pk>/', UserDetailView.as_view(), name='user-detail'),
+    path('users/<int:user_id>/follow/', FollowUserView.as_view(), name='follow-user'),  # Critical route
+    path('users/<int:user_id>/unfollow/', UnfollowUserView.as_view(), name='unfollow-user'),
+    path('follow-requests/pending/', PendingFollowRequestsView.as_view(), name='pending-requests'),
+    path('follow-requests/accept/<int:requester_id>/', AcceptFollowRequestView.as_view(), name='accept-request'),
+    path('follow-requests/reject/<int:requester_id>/', RejectFollowRequestView.as_view(), name='reject-request'),
 ]
 
