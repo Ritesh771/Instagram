@@ -38,7 +38,7 @@ export interface ApiError {
 }
 
 // API Configuration
-const API_BASE_URL = 'http://192.168.31.227:8000/api';
+const API_BASE_URL = 'http://192.168.31.177:8000/api';
 
 class ApiService {
   private api: any;
