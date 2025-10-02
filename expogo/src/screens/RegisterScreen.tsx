@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '@/context/AuthContext';
 
@@ -36,14 +37,12 @@ const RegisterScreen: React.FC = () => {
   const { register, verifyOTP, getUsernamePreview, isAuthenticated } = useAuth();
   const navigation = useNavigation();
 
-  // Redirect if already logged in
   useEffect(() => {
     if (isAuthenticated) {
       navigation.navigate('Feed' as never);
     }
   }, [isAuthenticated, navigation]);
 
-  // Update username preview when names change
   useEffect(() => {
     const updateUsernamePreview = async () => {
       if (formData.firstName.trim()) {
@@ -133,7 +132,6 @@ const RegisterScreen: React.FC = () => {
   };
 
   const handleOtpChange = (field: string, value: string) => {
-    // For code field, only allow digits
     if (field === 'code') {
       value = value.replace(/\D/g, '');
     }
@@ -150,320 +148,154 @@ const RegisterScreen: React.FC = () => {
         style={styles.keyboardAvoidingView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.content}>
-          <View style={styles.header}>
-            <LinearGradient
-              colors={['#E1306C', '#F56040']}
-              style={styles.logo}
-            >
-              <Text style={styles.logoText}>📷</Text>
-            </LinearGradient>
-            <Text style={styles.title}>
-              {step === 'register' ? 'Join InstaPics' : 'Verify Email'}
-            </Text>
-            <Text style={styles.subtitle}>
-              {step === 'register'
-                ? 'Create your account to start sharing'
-                : `Verify your email to complete registration. Your username will be @${finalUsername}`
-              }
-            </Text>
-          </View>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.content}>
+            {/* Header */}
+            <View style={styles.header}>
+              <LinearGradient colors={['#E1306C', '#F56040']} style={styles.logo}>
+                <Text style={styles.logoText}>📷</Text>
+              </LinearGradient>
+              <Text style={styles.title}>
+                {step === 'register' ? 'Join InstaPics' : 'Verify Email'}
+              </Text>
+              <Text style={styles.subtitle}>
+                {step === 'register'
+                  ? 'Create your account to start sharing moments'
+                  : `Verify your email to complete registration.\nYour username will be @${finalUsername}`}
+              </Text>
+            </View>
 
-          {step === 'register' ? (
-            <View style={styles.form}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>First Name</Text>
-                <TextInput
-                  style={[styles.input, errors.firstName && styles.inputError]}
-                  placeholder="Enter your first name"
-                  value={formData.firstName}
-                  onChangeText={(value) => handleInputChange('firstName', value)}
-                  autoCapitalize="words"
-                />
-                {errors.firstName && (
-                  <Text style={styles.errorText}>{errors.firstName}</Text>
-                )}
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Last Name <Text style={styles.optional}>(optional)</Text></Text>
-                <TextInput
-                  style={[styles.input, errors.lastName && styles.inputError]}
-                  placeholder="Enter your last name"
-                  value={formData.lastName}
-                  onChangeText={(value) => handleInputChange('lastName', value)}
-                  autoCapitalize="words"
-                />
-                {errors.lastName && (
-                  <Text style={styles.errorText}>{errors.lastName}</Text>
-                )}
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Email</Text>
-                <TextInput
-                  style={[styles.input, errors.email && styles.inputError]}
-                  placeholder="Enter your email"
-                  value={formData.email}
-                  onChangeText={(value) => handleInputChange('email', value)}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                {errors.email && (
-                  <Text style={styles.errorText}>{errors.email}</Text>
-                )}
-              </View>
-
-              {generatedUsername && (
-                <View style={styles.usernamePreview}>
-                  <Text style={styles.label}>Your Username</Text>
-                  <View style={styles.usernameBox}>
-                    <Text style={styles.usernameText}>@{generatedUsername}</Text>
+            {/* Register Form */}
+            {step === 'register' ? (
+              <View style={styles.form}>
+                {[
+                  { key: 'firstName', label: 'First Name', placeholder: 'Enter your first name', icon: 'person-outline' },
+                  { key: 'lastName', label: 'Last Name (optional)', placeholder: 'Enter your last name', icon: 'person-circle-outline' },
+                  { key: 'email', label: 'Email', placeholder: 'Enter your email', icon: 'mail-outline', keyboardType: 'email-address' },
+                  { key: 'password', label: 'Password', placeholder: 'Create a password', icon: 'lock-closed-outline', secureTextEntry: true },
+                  { key: 'confirmPassword', label: 'Confirm Password', placeholder: 'Confirm your password', icon: 'lock-closed-outline', secureTextEntry: true },
+                ].map(({ key, label, placeholder, icon, keyboardType, secureTextEntry }) => (
+                  <View key={key} style={styles.inputGroup}>
+                    <Text style={styles.label}>{label}</Text>
+                    <View style={[styles.inputWrapper, errors[key] && styles.inputError]}>
+                      <Ionicons name={icon as any} size={20} color="#666" style={styles.icon} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder={placeholder}
+                        placeholderTextColor="#aaa"
+                        value={formData[key as keyof typeof formData]}
+                        onChangeText={(value) => handleInputChange(key, value)}
+                        autoCapitalize={key === 'email' ? 'none' : 'words'}
+                        autoCorrect={false}
+                        keyboardType={keyboardType as any}
+                        secureTextEntry={secureTextEntry}
+                      />
+                    </View>
+                    {errors[key] && <Text style={styles.errorText}>{errors[key]}</Text>}
                   </View>
-                  <Text style={styles.usernameHint}>
-                    This will be your username.
-                  </Text>
+                ))}
+
+                {generatedUsername && (
+                  <View style={styles.usernamePreview}>
+                    <Text style={styles.label}>Your Username</Text>
+                    <View style={styles.usernameBox}>
+                      <Text style={styles.usernameText}>@{generatedUsername}</Text>
+                    </View>
+                    <Text style={styles.usernameHint}>This will be your username.</Text>
+                  </View>
+                )}
+
+                <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={isLoading} activeOpacity={0.8}>
+                  <LinearGradient colors={isLoading ? ['#bbb', '#ccc'] : ['#007AFF', '#005BBB']} style={styles.buttonGradient}>
+                    <Text style={styles.buttonText}>{isLoading ? 'Creating Account...' : 'Create Account'}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              /* Verify Step */
+              <View style={styles.form}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Verification Code</Text>
+                  <TextInput
+                    style={[styles.input, styles.codeInput, errors.code && styles.inputError]}
+                    placeholder="Enter 6-digit code"
+                    value={otpData.code}
+                    onChangeText={(value) => handleOtpChange('code', value)}
+                    keyboardType="numeric"
+                    maxLength={6}
+                    textAlign="center"
+                  />
+                  {errors.code && <Text style={styles.errorText}>{errors.code}</Text>}
+                  <Text style={styles.codeHint}>Check your email for the verification code</Text>
                 </View>
-              )}
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Password</Text>
-                <TextInput
-                  style={[styles.input, errors.password && styles.inputError]}
-                  placeholder="Create a password"
-                  value={formData.password}
-                  onChangeText={(value) => handleInputChange('password', value)}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                {errors.password && (
-                  <Text style={styles.errorText}>{errors.password}</Text>
-                )}
+                <TouchableOpacity style={styles.button} onPress={handleVerifyOTP} disabled={isLoading} activeOpacity={0.8}>
+                  <LinearGradient colors={isLoading ? ['#bbb', '#ccc'] : ['#34c759', '#28a745']} style={styles.buttonGradient}>
+                    <Text style={styles.buttonText}>{isLoading ? 'Verifying...' : 'Verify Account'}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.backButton} onPress={() => setStep('register')}>
+                  <Text style={styles.backButtonText}>← Back to Registration</Text>
+                </TouchableOpacity>
               </View>
+            )}
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Confirm Password</Text>
-                <TextInput
-                  style={[styles.input, errors.confirmPassword && styles.inputError]}
-                  placeholder="Confirm your password"
-                  value={formData.confirmPassword}
-                  onChangeText={(value) => handleInputChange('confirmPassword', value)}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                {errors.confirmPassword && (
-                  <Text style={styles.errorText}>{errors.confirmPassword}</Text>
-                )}
-              </View>
-
-              <TouchableOpacity
-                style={[styles.button, isLoading && styles.buttonDisabled]}
-                onPress={handleRegister}
-                disabled={isLoading}
-              >
-                <Text style={styles.buttonText}>
-                  {isLoading ? 'Creating Account...' : 'Create Account'}
-                </Text>
+            {step === 'register' && (
+              <TouchableOpacity style={styles.linkButton} onPress={() => navigation.navigate('Login' as never)}>
+                <Text style={styles.linkText}>Already have an account? Sign in</Text>
               </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.form}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Verification Code</Text>
-                <TextInput
-                  style={[styles.input, styles.codeInput, errors.code && styles.inputError]}
-                  placeholder="Enter 6-digit code"
-                  value={otpData.code}
-                  onChangeText={(value) => handleOtpChange('code', value)}
-                  keyboardType="numeric"
-                  maxLength={6}
-                  textAlign="center"
-                />
-                {errors.code && (
-                  <Text style={styles.errorText}>{errors.code}</Text>
-                )}
-                <Text style={styles.codeHint}>
-                  Check your email for the verification code
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                style={[styles.button, isLoading && styles.buttonDisabled]}
-                onPress={handleVerifyOTP}
-                disabled={isLoading}
-              >
-                <Text style={styles.buttonText}>
-                  {isLoading ? 'Verifying...' : 'Verify Account'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => setStep('register')}
-              >
-                <Text style={styles.backButtonText}>← Back to Registration</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {step === 'register' && (
-            <TouchableOpacity
-              style={styles.linkButton}
-              onPress={() => navigation.navigate('Login' as never)}
-            >
-              <Text style={styles.linkText}>Already have an account? Sign in</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+            )}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
+/* ========== Styles ========== */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
+  container: { flex: 1, backgroundColor: '#f9fafc' },
+  keyboardAvoidingView: { flex: 1 },
+  scrollContent: { flexGrow: 1 },
+  content: { flex: 1, justifyContent: 'center', padding: 20 },
+  header: { alignItems: 'center', marginBottom: 30 },
   logo: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
+    width: 90, height: 90, borderRadius: 45,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 15,
   },
-  logoText: {
-    fontSize: 32,
+  logoText: { fontSize: 36 },
+  title: { fontSize: 28, fontWeight: '800', color: '#222', marginBottom: 8 },
+  subtitle: { fontSize: 16, color: '#666', textAlign: 'center', lineHeight: 22 },
+  form: { marginBottom: 25 },
+  inputGroup: { marginBottom: 18 },
+  label: { fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 6 },
+  inputWrapper: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderColor: '#ddd', borderRadius: 10,
+    backgroundColor: '#fff', paddingHorizontal: 12,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, elevation: 2,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  form: {
-    marginBottom: 30,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  optional: {
-    fontSize: 14,
-    fontWeight: 'normal',
-    color: '#666',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 15,
-    fontSize: 16,
-  },
-  inputError: {
-    borderColor: '#dc3545',
-  },
-  codeInput: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    letterSpacing: 2,
-  },
-  errorText: {
-    color: '#dc3545',
-    fontSize: 14,
-    marginTop: 5,
-  },
-  codeHint: {
-    color: '#666',
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  usernamePreview: {
-    marginBottom: 20,
-  },
+  icon: { marginRight: 8 },
+  input: { flex: 1, paddingVertical: 12, fontSize: 16, color: '#333' },
+  inputError: { borderColor: '#dc3545' },
+  errorText: { color: '#dc3545', fontSize: 13, marginTop: 4 },
+  usernamePreview: { marginBottom: 20 },
   usernameBox: {
-    backgroundColor: '#f8f9fa',
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
+    backgroundColor: '#f8f9fa', borderWidth: 1, borderColor: '#e9ecef',
+    borderRadius: 8, padding: 12, marginTop: 6,
   },
-  usernameText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  usernameHint: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  buttonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  backButton: {
-    alignItems: 'center',
-    padding: 10,
-    marginTop: 10,
-  },
-  backButtonText: {
-    color: '#007AFF',
-    fontSize: 16,
-  },
-  linkButton: {
-    alignItems: 'center',
-    padding: 10,
-  },
-  linkText: {
-    color: '#007AFF',
-    fontSize: 16,
-  },
+  usernameText: { fontSize: 16, fontWeight: '600', color: '#333' },
+  usernameHint: { fontSize: 14, color: '#666', marginTop: 4 },
+  button: { marginTop: 10, borderRadius: 10, overflow: 'hidden' },
+  buttonGradient: { padding: 15, alignItems: 'center', borderRadius: 10 },
+  buttonText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  codeInput: { fontSize: 20, fontWeight: '700', letterSpacing: 3 },
+  codeHint: { color: '#666', fontSize: 14, textAlign: 'center', marginTop: 6 },
+  backButton: { alignItems: 'center', marginTop: 15 },
+  backButtonText: { color: '#007AFF', fontSize: 15, fontWeight: '500' },
+  linkButton: { alignItems: 'center', marginTop: 20 },
+  linkText: { color: '#007AFF', fontSize: 15, fontWeight: '600' },
 });
 
 export default RegisterScreen;
