@@ -8,6 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { usePosts } from '@/context/PostsContext';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient'; // make sure to import this
+
 
 const numColumns = 3;
 const screenWidth = Dimensions.get('window').width;
@@ -22,10 +24,9 @@ const ProfileScreen: React.FC = () => {
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [editBio, setEditBio] = useState(user?.bio || '');
   const [isUpdating, setIsUpdating] = useState(false);
-
+  const [isPreviewing, setIsPreviewing] = useState(false);
   const [selectedPost, setSelectedPost] = useState<any>(null); // for modal
   const scaleAnim = useState(new Animated.Value(0))[0]; // scale animation
-
   const userPosts = posts.filter(post => post.user.id === user?.id);
 
   const handleSaveBio = async () => {
@@ -52,6 +53,7 @@ const ProfileScreen: React.FC = () => {
 
   const handleLongPress = (post: any) => {
     setSelectedPost(post);
+    setIsPreviewing(true); // user is holding
     scaleAnim.setValue(0);
     Animated.timing(scaleAnim, {
       toValue: 1,
@@ -61,7 +63,10 @@ const ProfileScreen: React.FC = () => {
     }).start();
   };
 
-  const handleCloseModal = () => {
+  const handleRelease = () => {
+    if (!isPreviewing) return; // only close if actually previewing
+    setIsPreviewing(false);
+
     Animated.timing(scaleAnim, {
       toValue: 0,
       duration: 150,
@@ -73,24 +78,29 @@ const ProfileScreen: React.FC = () => {
   const renderPhoto = ({ item }: { item: any }) => (
     <TouchableOpacity
       activeOpacity={0.9}
-      onPress={() => navigation.navigate('PostView', { post: item })} // navigate to PostView
-      onLongPress={() => handleLongPress(item)}
+      onPress={() => navigation.navigate('PostView', { post: item })}
+      onLongPress={() => handleLongPress(item)}  // open preview
+      onPressOut={handleRelease}                 // close only on release
     >
       <Image source={{ uri: item.image }} style={styles.gridImage} />
     </TouchableOpacity>
   );
-
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
         {/* Top Profile Section */}
         <View style={styles.topSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {user?.first_name?.[0]}{user?.last_name?.[0]}
-            </Text>
-          </View>
+          <TouchableOpacity style={styles.userInfo}>
+            <LinearGradient
+              colors={["#f09433", "#e6683c", "#dc2743", "#cc2366", "#bc1888"]}
+              style={styles.avatar}
+            >
+              <Text style={styles.avatarText}>
+                {user?.first_name?.[0]}{user?.last_name?.[0]}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
 
           <View style={styles.statsRow}>
             <TouchableOpacity
@@ -165,13 +175,9 @@ const ProfileScreen: React.FC = () => {
           <TouchableOpacity style={styles.tabButton} onPress={() => setActiveTab('posts')}>
             <Text style={[styles.tabText, activeTab === 'posts' && styles.activeTab]}>Posts</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.tabButton} onPress={() => setActiveTab('reels')}>
-            <Text style={[styles.tabText, activeTab === 'reels' && styles.activeTab]}>Reels</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Posts Grid */}
-        {activeTab === 'posts' && (
           <FlatList
             data={userPosts}
             renderItem={renderPhoto}
@@ -179,7 +185,6 @@ const ProfileScreen: React.FC = () => {
             numColumns={numColumns}
             scrollEnabled={false}
           />
-        )}
       </ScrollView>
 
       {/* Modal for Long Press Preview */}
@@ -187,15 +192,12 @@ const ProfileScreen: React.FC = () => {
         visible={!!selectedPost}
         transparent
         animationType="none"
-        onRequestClose={handleCloseModal}
+        onRequestClose={handleRelease}
       >
         <View style={styles.modalBackground}>
           <Animated.View style={[styles.modalContent, { transform: [{ scale: scaleAnim }] }]}>
             <Image source={{ uri: selectedPost?.image }} style={styles.modalImage} />
             <Text style={styles.modalLikes}>{selectedPost?.likes || 0} Likes</Text>
-            <TouchableOpacity onPress={handleCloseModal} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>Close</Text>
-            </TouchableOpacity>
           </Animated.View>
         </View>
       </Modal>
