@@ -60,34 +60,6 @@ const SettingsScreen: React.FC = () => {
             <Text style={[styles.cardTitle, { color: 'red' }]}>Logout</Text>
           </View>
         </TouchableOpacity>
-
-        {/* Other Settings */}
-        <View style={styles.card}>
-          <View style={styles.cardRow}>
-            <View>
-              <Text style={styles.cardTitle}>Account</Text>
-              <Text style={styles.cardSubtitle}>Manage your account information</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.cardRow}>
-            <View>
-              <Text style={styles.cardTitle}>Privacy</Text>
-              <Text style={styles.cardSubtitle}>Privacy and security settings</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.cardRow}>
-            <View>
-              <Text style={styles.cardTitle}>Help</Text>
-              <Text style={styles.cardSubtitle}>Support and FAQs</Text>
-            </View>
-          </View>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
