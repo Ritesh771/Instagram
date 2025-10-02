@@ -1,47 +1,48 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, TextInput, Switch, ScrollView } from 'react-native';
+import { 
+  View, Text, TouchableOpacity, StyleSheet, 
+  TextInput, ScrollView, FlatList, Image, 
+  Dimensions, Alert, Modal, Animated, Easing
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { usePosts } from '@/context/PostsContext';
+import { useNavigation } from '@react-navigation/native';
+
+const numColumns = 3;
+const screenWidth = Dimensions.get('window').width;
+const imageSize = screenWidth / numColumns;
 
 const ProfileScreen: React.FC = () => {
-  const { user, logout, updateProfile } = useAuth();
+  const { user, updateProfile } = useAuth();
   const { posts } = usePosts();
-  
+  const navigation = useNavigation();
+
+  const [activeTab, setActiveTab] = useState<'posts' | 'reels'>('posts');
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [editBio, setEditBio] = useState(user?.bio || '');
   const [isUpdating, setIsUpdating] = useState(false);
 
+  const [selectedPost, setSelectedPost] = useState<any>(null); // for modal
+  const scaleAnim = useState(new Animated.Value(0))[0]; // scale animation
+
   const userPosts = posts.filter(post => post.user.id === user?.id);
 
-  const handleToggle2FA = async (enabled: boolean) => {
-    setIsUpdating(true);
-    const result = await updateProfile({ two_factor_enabled: enabled });
-    
-    if (result.success) {
-      Alert.alert(
-        enabled ? "2FA Enabled" : "2FA Disabled",
-        enabled 
-          ? "Two-factor authentication is now enabled. You'll receive OTP codes for future logins."
-          : "Two-factor authentication is now disabled. You can log in with just your password."
-      );
-    } else {
-      Alert.alert("Update Failed", result.message || "Failed to update 2FA settings");
-    }
-    setIsUpdating(false);
-  };
-
   const handleSaveBio = async () => {
+    if (!editBio.trim()) {
+      Alert.alert('Error', 'Bio cannot be empty');
+      return;
+    }
     setIsUpdating(true);
     const result = await updateProfile({ bio: editBio });
-    
+    setIsUpdating(false);
+
     if (result.success) {
-      Alert.alert("Bio Updated", "Your bio has been updated successfully.");
+      Alert.alert('Success', 'Bio updated successfully');
       setIsEditingBio(false);
     } else {
-      Alert.alert("Update Failed", result.message || "Failed to update bio");
+      Alert.alert('Error', result.message || 'Failed to update bio');
     }
-    setIsUpdating(false);
   };
 
   const handleCancelEdit = () => {
@@ -49,276 +50,191 @@ const ProfileScreen: React.FC = () => {
     setIsEditingBio(false);
   };
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Logout', style: 'destructive', onPress: logout },
-      ]
-    );
+  const handleLongPress = (post: any) => {
+    setSelectedPost(post);
+    scaleAnim.setValue(0);
+    Animated.timing(scaleAnim, {
+      toValue: 1,
+      duration: 200,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
   };
+
+  const handleCloseModal = () => {
+    Animated.timing(scaleAnim, {
+      toValue: 0,
+      duration: 150,
+      easing: Easing.in(Easing.ease),
+      useNativeDriver: true,
+    }).start(() => setSelectedPost(null));
+  };
+
+  const renderPhoto = ({ item }: { item: any }) => (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={() => navigation.navigate('PostView', { post: item })} // navigate to PostView
+      onLongPress={() => handleLongPress(item)}
+    >
+      <Image source={{ uri: item.image }} style={styles.gridImage} />
+    </TouchableOpacity>
+  );
+
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView}>
-      <View style={styles.profileHeader}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {user?.first_name?.[0]}{user?.last_name?.[0]}
-          </Text>
-        </View>
-        <Text style={styles.username}>{user?.username}</Text>
-        <Text style={styles.email}>{user?.email}</Text>
-      </View>
+      <ScrollView>
+        {/* Top Profile Section */}
+        <View style={styles.topSection}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {user?.first_name?.[0]}{user?.last_name?.[0]}
+            </Text>
+          </View>
 
-      <View style={styles.statsContainer}>
-        <View style={styles.stat}>
-          <Text style={styles.statNumber}>{userPosts.length}</Text>
-          <Text style={styles.statLabel}>Posts</Text>
-        </View>
-        <View style={styles.stat}>
-          <Text style={styles.statNumber}>0</Text>
-          <Text style={styles.statLabel}>Followers</Text>
-        </View>
-        <View style={styles.stat}>
-          <Text style={styles.statNumber}>0</Text>
-          <Text style={styles.statLabel}>Following</Text>
-        </View>
-      </View>
-
-      <View style={styles.bioContainer}>
-        <View style={styles.bioHeader}>
-          <Text style={styles.bioLabel}>Bio:</Text>
-          {!isEditingBio && (
-            <TouchableOpacity 
-              style={styles.editButton}
-              onPress={() => setIsEditingBio(true)}
+          <View style={styles.statsRow}>
+            <TouchableOpacity
+              style={styles.stat}
+              onPress={() => {
+                if (userPosts.length > 0) {
+                  navigation.navigate('PostView', { post: userPosts[0] });
+                }
+              }}
             >
-              <Text style={styles.editButtonText}>Edit</Text>
+              <Text style={styles.statNumber}>{userPosts.length}</Text>
+              <Text style={styles.statLabel}>Posts</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.stat}
+              onPress={() =>
+                navigation.navigate('Followers', { followers: user?.followers || [] })
+              }
+            >
+              <Text style={styles.statNumber}>{user?.followers?.length || 0}</Text>
+              <Text style={styles.statLabel}>Followers</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.stat}
+              onPress={() =>
+                navigation.navigate('Following', { following: user?.following || [] })
+              }
+            >
+              <Text style={styles.statNumber}>{user?.following?.length || 0}</Text>
+              <Text style={styles.statLabel}>Following</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Username & Bio */}
+        <View style={styles.bioSection}>
+          <Text style={styles.usernameText}>{user?.username}</Text>
+          {isEditingBio ? (
+            <View>
+              <TextInput
+                style={styles.bioInput}
+                value={editBio}
+                onChangeText={setEditBio}
+                multiline
+              />
+              <View style={styles.bioEditButtons}>
+                <TouchableOpacity style={styles.cancelButton} onPress={handleCancelEdit}>
+                  <Text>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.saveButton} onPress={handleSaveBio}>
+                  <Text>{isUpdating ? 'Saving...' : 'Save'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.bioText}>{user?.bio || ''}</Text>
           )}
         </View>
-        
-        {isEditingBio ? (
-          <View style={styles.bioEditContainer}>
-            <TextInput
-              style={styles.bioInput}
-              value={editBio}
-              onChangeText={setEditBio}
-              placeholder="Tell us about yourself..."
-              multiline
-              maxLength={150}
-              numberOfLines={3}
-            />
-            <Text style={styles.charCount}>{editBio.length}/150</Text>
-            <View style={styles.bioEditButtons}>
-              <TouchableOpacity 
-                style={[styles.bioButton, styles.cancelButton]}
-                onPress={handleCancelEdit}
-                disabled={isUpdating}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.bioButton, styles.saveButton]}
-                onPress={handleSaveBio}
-                disabled={isUpdating}
-              >
-                <Text style={styles.saveButtonText}>
-                  {isUpdating ? 'Saving...' : 'Save'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <Text style={styles.bioText}>{user?.bio || 'No bio yet'}</Text>
-        )}
-      </View>
 
-      <View style={styles.settingsContainer}>
-        
-        
-        <View style={styles.settingButton}>
-          <View style={styles.settingRow}>
-            <Text style={styles.settingText}>Two-Factor Auth: {user?.two_factor_enabled ? 'On' : 'Off'}</Text>
-            <Switch
-              value={user?.two_factor_enabled || false}
-              onValueChange={handleToggle2FA}
-              disabled={isUpdating}
-            />
-          </View>
+        {/* Edit Profile + Settings */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity style={styles.editProfileButton} onPress={() => setIsEditingBio(true)}>
+            <Text>Edit Profile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>
+            <Text>Settings</Text>
+          </TouchableOpacity>
         </View>
-        
-        <TouchableOpacity 
-          style={[styles.settingButton, styles.logoutButton]}
-          onPress={handleLogout}
-        >
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
+
+        {/* Tabs */}
+        <View style={styles.tabsRow}>
+          <TouchableOpacity style={styles.tabButton} onPress={() => setActiveTab('posts')}>
+            <Text style={[styles.tabText, activeTab === 'posts' && styles.activeTab]}>Posts</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.tabButton} onPress={() => setActiveTab('reels')}>
+            <Text style={[styles.tabText, activeTab === 'reels' && styles.activeTab]}>Reels</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Posts Grid */}
+        {activeTab === 'posts' && (
+          <FlatList
+            data={userPosts}
+            renderItem={renderPhoto}
+            keyExtractor={(item) => item.id.toString()}
+            numColumns={numColumns}
+            scrollEnabled={false}
+          />
+        )}
       </ScrollView>
+
+      {/* Modal for Long Press Preview */}
+      <Modal
+        visible={!!selectedPost}
+        transparent
+        animationType="none"
+        onRequestClose={handleCloseModal}
+      >
+        <View style={styles.modalBackground}>
+          <Animated.View style={[styles.modalContent, { transform: [{ scale: scaleAnim }] }]}>
+            <Image source={{ uri: selectedPost?.image }} style={styles.modalImage} />
+            <Text style={styles.modalLikes}>{selectedPost?.likes || 0} Likes</Text>
+            <TouchableOpacity onPress={handleCloseModal} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  profileHeader: {
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e5e5',
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#007AFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  avatarText: {
-    color: '#fff',
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  username: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 5,
-  },
-  email: {
-    fontSize: 16,
-    color: '#666',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e5e5',
-  },
-  stat: {
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#666',
-  },
-  bioContainer: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e5e5',
-  },
-  bioHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  bioLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  bioText: {
-    fontSize: 14,
-    color: '#333',
-  },
-  editButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#007AFF',
-    borderRadius: 6,
-  },
-  editButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  bioEditContainer: {
-    marginTop: 10,
-  },
-  bioInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 12,
-    borderRadius: 8,
-    fontSize: 14,
-    textAlignVertical: 'top',
-    marginBottom: 8,
-  },
-  charCount: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'right',
-    marginBottom: 10,
-  },
-  bioEditButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  bioButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-    minWidth: 80,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#f0f0f0',
-  },
-  cancelButtonText: {
-    color: '#666',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  saveButton: {
-    backgroundColor: '#007AFF',
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  settingsContainer: {
-    flex: 1,
-    padding: 20,
-  },
-  settingButton: {
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e5e5',
-  },
-  settingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  settingText: {
-    fontSize: 16,
-  },
-  logoutButton: {
-    marginTop: 20,
-    borderBottomWidth: 0,
-  },
-  logoutText: {
-    fontSize: 16,
-    color: 'red',
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
+  topSection: { flexDirection: 'row', padding: 15, alignItems: 'center' },
+  avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#007AFF', justifyContent: 'center', alignItems: 'center' },
+  avatarText: { color: '#fff', fontSize: 36, fontWeight: 'bold' },
+  statsRow: { flex: 1, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
+  stat: { alignItems: 'center' },
+  statNumber: { fontWeight: 'bold', fontSize: 16 },
+  statLabel: { fontSize: 14, color: '#666' },
+  bioSection: { paddingHorizontal: 15, paddingVertical: 10 },
+  usernameText: { fontWeight: 'bold', fontSize: 16 },
+  bioText: { fontSize: 14, color: '#333' },
+  bioInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8, marginVertical: 8 },
+  bioEditButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  cancelButton: { paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#ccc', borderRadius: 6, marginRight: 10 },
+  saveButton: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#007AFF', borderRadius: 6 },
+  actionButtons: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 15, marginVertical: 10 },
+  editProfileButton: { flex: 1, padding: 8, borderWidth: 1, borderColor: '#ccc', borderRadius: 6, marginRight: 5, alignItems: 'center' },
+  settingsButton: { flex: 1, padding: 8, borderWidth: 1, borderColor: '#ccc', borderRadius: 6, marginLeft: 5, alignItems: 'center' },
+  tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#e5e5e5', marginTop: 10 },
+  tabButton: { flex: 1, alignItems: 'center', paddingVertical: 10 },
+  tabText: { color: '#888', fontSize: 16 },
+  activeTab: { color: '#000', fontWeight: 'bold' },
+  gridImage: { width: imageSize, height: imageSize, margin: 1 },
+
+  // Modal styles
+  modalBackground: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { alignItems: 'center' },
+  modalImage: { width: screenWidth * 0.9, height: screenWidth * 0.9, resizeMode: 'cover', borderRadius: 10 },
+  modalLikes: { color: '#fff', marginTop: 10, fontSize: 16, fontWeight: '600' },
+  closeButton: { marginTop: 15, paddingVertical: 8, paddingHorizontal: 20, backgroundColor: '#fff', borderRadius: 6 },
+  closeButtonText: { color: '#000', fontWeight: '600' },
 });
 
 export default ProfileScreen;
