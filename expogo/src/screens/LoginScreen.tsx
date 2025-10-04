@@ -1,77 +1,127 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { Ionicons } from '@expo/vector-icons';
 import * as Animatable from 'react-native-animatable';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../context/AuthContext';
+import BiometricLogin from '../components/BiometricLogin';
 
 type RootStackParamList = {
   Login: undefined;
   Register: undefined;
-  Verify2FA: { username: string };
   ForgotPassword: undefined;
-  ResetPassword: undefined;
+  ResetPassword: { email?: string };
   Main: undefined;
 };
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
 
 const LoginScreen: React.FC = () => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+  });
+  const [otpCode, setOtpCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { login, isLoading, enableBiometricLogin } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const { login, verify2FA, isAuthenticated, pendingOtpData, clearPendingOtp } = useAuth();
   const navigation = useNavigation<LoginScreenNavigationProp>();
 
+  // Determine current step based on pendingOtpData from AuthContext
+  const step = pendingOtpData ? 'verify2fa' : 'login';
+
+  // Redirect if already logged in - this handles automatic navigation
+  useEffect(() => {
+    // Don't manually navigate here - let React Navigation handle it automatically
+  }, [isAuthenticated]);
+
   const handleLogin = async () => {
-    if (!username || !password) {
-      Alert.alert('Error', 'Username and password are required');
+    if (!formData.username.trim() || !formData.password) {
+      setErrors({ general: 'Username and password are required' });
       return;
     }
 
-    const result = await login(username, password);
-
-    if (!result.success) {
-      if (result.requires2FA) {
-        navigation.navigate('Verify2FA', { username });
-      } else {
-        Alert.alert('Login Failed', result.message || 'An unknown error occurred.');
-      }
+    setIsLoading(true);
+    setErrors({});
+    
+    const result = await login(formData.username, formData.password);
+    
+    if (result.success) {
+      // Don't manually navigate - authentication state change will trigger automatic navigation
+    } else if (result.requires2FA) {
+      // No need to set local state - pendingOtpData in AuthContext will trigger step change
     } else {
-      Alert.alert(
-        'Enable App Lock',
-        'Would you like to enable biometric app lock? This will require biometric authentication when you open the app.',
-        [
-          { text: 'Not Now', style: 'cancel' },
-          {
-            text: 'Enable',
-            onPress: async () => {
-              console.log('User chose to enable app lock');
-              const enableResult = await enableBiometricLogin(username, password);
-              console.log('Enable result:', enableResult);
-              if (enableResult.success) {
-                Alert.alert('Success', 'App lock enabled! The app will now require biometric authentication when reopened.');
-              } else {
-                Alert.alert('Error', 'Failed to enable app lock');
-              }
-            },
-          },
-        ]
-      );
+      setErrors({ general: result.message || 'Login failed' });
+      if (result.details) {
+        const newErrors: Record<string, string> = {};
+        Object.entries(result.details).forEach(([field, messages]) => {
+          if (messages.length > 0) {
+            newErrors[field] = messages[0];
+          }
+        });
+        setErrors({ ...newErrors, general: result.message || 'Login failed' });
+      }
+    }
+    setIsLoading(false);
+  };
+
+  const handleVerify2FA = async () => {
+    if (!otpCode.trim()) {
+      setErrors({ code: 'Verification code is required' });
+      return;
+    }
+
+    if (!pendingOtpData?.username) {
+      setErrors({ code: 'Session expired. Please login again.' });
+      clearPendingOtp();
+      return;
+    }
+
+    setIsLoading(true);
+    setErrors({});
+    
+    const result = await verify2FA(pendingOtpData.username, otpCode);
+    
+    if (result.success) {
+      // Don't manually navigate - authentication state change will trigger automatic navigation
+    } else {
+      setErrors({ code: result.message || 'Verification failed' });
+    }
+    setIsLoading(false);
+  };
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    if (errors[field] || errors.general) {
+      setErrors(prev => ({ ...prev, [field]: '', general: '' }));
     }
   };
+
+  const handleOtpChange = (field: string, value: string) => {
+    if (field === 'code') {
+      // Only allow digits for the code field
+      value = value.replace(/\D/g, '');
+      setOtpCode(value);
+    }
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  // Debug: Log current step during render
 
   return (
     <SafeAreaView style={styles.container}>
@@ -87,71 +137,145 @@ const LoginScreen: React.FC = () => {
             <Animatable.View animation="pulse" iterationCount="infinite" style={styles.logo}>
               <Text style={styles.logoText}>📷</Text>
             </Animatable.View>
-            <Text style={styles.title}>Welcome Back</Text>
-            <Text style={styles.subtitle}>Sign in to continue your journey</Text>
+            <Text style={styles.title}>
+              {step === 'login' ? 'Welcome Back' : 'Verify 2FA'}
+            </Text>
+            <Text style={styles.subtitle}>
+              {step === 'login' 
+                ? 'Sign in to continue your journey' 
+                : 'Enter the verification code from your email'
+              }
+            </Text>
           </View>
 
-          <View style={styles.inputContainer}>
-            <View style={[styles.inputWrapper, !username && styles.inputError]}>
-              <Icon name="account" size={24} color="#666" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Username"
-                placeholderTextColor="#999"
-                value={username}
-                onChangeText={setUsername}
-                autoCapitalize="none"
-              />
-            </View>
-            {!username && <Text style={styles.errorText}>Username is required</Text>}
+          {step === 'login' ? (
+            <View style={styles.inputContainer}>
+              {errors.general && (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{errors.general}</Text>
+                </View>
+              )}
 
-            <View style={[styles.inputWrapper, !password && styles.inputError]}>
-              <Icon name="lock" size={24} color="#666" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                placeholderTextColor="#999"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-              />
+              <View style={[styles.inputWrapper, errors.username && styles.inputError]}>
+                <Ionicons name="person" size={24} color="#666" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Username"
+                  placeholderTextColor="#999"
+                  value={formData.username}
+                  onChangeText={(value) => handleInputChange('username', value)}
+                  autoCapitalize="none"
+                />
+              </View>
+              {errors.username && <Text style={styles.errorText}>{errors.username}</Text>}
+
+              <View style={[styles.inputWrapper, errors.password && styles.inputError]}>
+                <Ionicons name="lock-closed" size={24} color="#666" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor="#999"
+                  value={formData.password}
+                  onChangeText={(value) => handleInputChange('password', value)}
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeIcon}
+                >
+                  <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+              {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+
+              <Animatable.View animation="bounceIn" style={styles.buttonContainer}>
+                <TouchableOpacity
+                  style={[styles.button, isLoading && styles.buttonDisabled]}
+                  onPress={handleLogin}
+                  disabled={isLoading}
+                >
+                  <Text style={styles.buttonText}>
+                    {isLoading ? 'Signing In...' : 'Sign In'}
+                  </Text>
+                </TouchableOpacity>
+              </Animatable.View>
+
+              {/* Biometric Login Option */}
+              <View style={styles.dividerContainer}>
+                <View style={styles.divider} />
+                <Text style={styles.dividerText}>Or</Text>
+                <View style={styles.divider} />
+              </View>
+
+              <BiometricLogin onSuccess={() => {
+                // Don't manually navigate - authentication state change will trigger automatic navigation
+              }} />
+            </View>
+          ) : (
+            <View style={styles.inputContainer}>
+              <View style={[styles.inputWrapper, errors.code && styles.inputError]}>
+                <TextInput
+                  style={[styles.input, styles.codeInput]}
+                  placeholder="Enter 6-digit code"
+                  placeholderTextColor="#999"
+                  value={otpCode}
+                  onChangeText={(value) => handleOtpChange('code', value)}
+                  keyboardType="numeric"
+                  maxLength={6}
+                  textAlign="center"
+                />
+              </View>
+              {errors.code && <Text style={styles.errorText}>{errors.code}</Text>}
+              <Text style={styles.codeHint}>Check your email for the verification code</Text>
+
+              <Animatable.View animation="bounceIn" style={styles.buttonContainer}>
+                <TouchableOpacity
+                  style={[styles.button, isLoading && styles.buttonDisabled]}
+                  onPress={handleVerify2FA}
+                  disabled={isLoading}
+                >
+                  <Text style={styles.buttonText}>
+                    {isLoading ? 'Verifying...' : 'Verify & Sign In'}
+                  </Text>
+                </TouchableOpacity>
+              </Animatable.View>
+            </View>
+          )}
+
+          <View style={styles.linkContainer}>
+            {step === 'login' && (
               <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeIcon}
+                style={styles.linkButton}
+                onPress={() => navigation.navigate('ForgotPassword')}
               >
-                <Icon name={showPassword ? 'eye-off' : 'eye'} size={24} color="#666" />
+                <Text style={styles.linkText}>Forgot Password?</Text>
+              </TouchableOpacity>
+            )}
+            
+            {step === 'verify2fa' && (
+              <TouchableOpacity
+                style={styles.linkButton}
+                onPress={() => {
+                  clearPendingOtp();
+                  setOtpCode('');
+                  setErrors({});
+                }}
+              >
+                <Text style={styles.linkText}>← Back to login</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {step === 'login' && (
+            <View style={styles.footer}>
+              <TouchableOpacity
+                style={styles.linkButton}
+                onPress={() => navigation.navigate('Register')}
+              >
+                <Text style={styles.linkText}>Don't have an account? Register</Text>
               </TouchableOpacity>
             </View>
-            {!password && <Text style={styles.errorText}>Password is required</Text>}
-          </View>
-
-          <Animatable.View animation="bounceIn" style={styles.buttonContainer}>
-            <TouchableOpacity
-              style={[styles.button, isLoading && styles.buttonDisabled]}
-              onPress={handleLogin}
-              disabled={isLoading}
-            >
-              <Text style={styles.buttonText}>
-                {isLoading ? 'Signing In...' : 'Sign In'}
-              </Text>
-            </TouchableOpacity>
-          </Animatable.View>
-
-          <TouchableOpacity
-            style={styles.linkButton}
-            onPress={() => navigation.navigate('ForgotPassword' as never)}
-          >
-            <Text style={styles.linkText}>Forgot Password?</Text>
-          </TouchableOpacity>
-
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={styles.linkButton}
-              onPress={() => navigation.navigate('Register')}
-            >
-              <Text style={styles.linkText}>Don't have an account? Register</Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </KeyboardAvoidingView>
       </LinearGradient>
     </SafeAreaView>
@@ -168,117 +292,145 @@ const styles = StyleSheet.create({
   innerContainer: {
     flex: 1,
     justifyContent: 'center',
-    padding: 20,
+    alignItems: 'center',
+    paddingHorizontal: 30,
   },
   logoContainer: {
     alignItems: 'center',
     marginBottom: 40,
   },
   logo: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+    marginBottom: 20,
   },
   logoText: {
-    fontSize: 40,
+    fontSize: 60,
+    textAlign: 'center',
   },
   title: {
-    fontSize: 32,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: 'bold',
     color: '#fff',
-    marginTop: 20,
     marginBottom: 10,
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'Roboto', // Modern font
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
     color: '#fff',
     textAlign: 'center',
-    marginBottom: 20,
     opacity: 0.8,
   },
   inputContainer: {
+    width: '100%',
     marginBottom: 20,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 10,
     marginBottom: 15,
-    paddingHorizontal: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
+    paddingHorizontal: 15,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  inputError: {
+    borderColor: '#ff4444',
   },
   inputIcon: {
     marginRight: 10,
+    color: '#fff',
   },
   input: {
     flex: 1,
-    paddingVertical: 15,
+    height: 50,
+    color: '#fff',
     fontSize: 16,
-    color: '#333',
+  },
+  codeInput: {
+    textAlign: 'center',
+    fontSize: 24,
+    letterSpacing: 5,
   },
   eyeIcon: {
-    padding: 10,
+    padding: 5,
   },
-  inputError: {
-    borderWidth: 1,
-    borderColor: '#dc3545',
+  errorContainer: {
+    backgroundColor: 'rgba(255, 68, 68, 0.1)',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 15,
   },
   errorText: {
-    color: '#ee',
+    color: '#ff4444',
     fontSize: 14,
+    textAlign: 'center',
     marginBottom: 10,
-    marginLeft: 10,
+  },
+  codeHint: {
+    color: '#fff',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 20,
+    opacity: 0.8,
   },
   buttonContainer: {
-    marginTop: 10,
+    width: '100%',
+    marginBottom: 20,
   },
   button: {
     backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 12,
+    borderRadius: 10,
+    height: 50,
+    justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
     elevation: 5,
   },
   buttonDisabled: {
-    backgroundColor: '#ccc',
-    shadowOpacity: 0,
-    elevation: 0,
+    opacity: 0.7,
   },
   buttonText: {
     color: '#E1306C',
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: 'bold',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  dividerText: {
+    color: '#fff',
+    marginHorizontal: 15,
+    fontSize: 16,
+    opacity: 0.8,
+  },
+  linkContainer: {
+    alignItems: 'center',
+    marginTop: 10,
   },
   linkButton: {
-    alignItems: 'center',
     padding: 10,
   },
   linkText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '500',
-    opacity: 0.9,
+    textDecorationLine: 'underline',
   },
   footer: {
-    marginTop: 20,
+    position: 'absolute',
+    bottom: 50,
     alignItems: 'center',
   },
 });

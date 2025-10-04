@@ -38,9 +38,8 @@ const RegisterScreen: React.FC = () => {
   const navigation = useNavigation();
 
   useEffect(() => {
-    if (isAuthenticated) {
-      navigation.navigate('Feed' as never);
-    }
+    console.log('RegisterScreen - isAuthenticated changed:', isAuthenticated);
+    // Don't manually navigate here - let React Navigation handle it automatically
   }, [isAuthenticated, navigation]);
 
   useEffect(() => {
@@ -97,7 +96,17 @@ const RegisterScreen: React.FC = () => {
       setStep('verify');
       Alert.alert('Registration Successful', result.message || 'Please check your email for verification code.');
     } else {
-      Alert.alert('Registration Failed', result.message);
+      if (result.details) {
+        const newErrors: Record<string, string> = {};
+        Object.entries(result.details).forEach(([field, messages]) => {
+          if (messages.length > 0) {
+            newErrors[field] = messages[0]; // Take the first error message for each field
+          }
+        });
+        setErrors(newErrors);
+      } else {
+        Alert.alert('Registration Failed', result.message);
+      }
     }
     setIsLoading(false);
   };
@@ -115,11 +124,24 @@ const RegisterScreen: React.FC = () => {
       Alert.alert('Account Verified', 'Your account has been verified successfully!', [
         {
           text: 'OK',
-          onPress: () => navigation.navigate('Feed' as never),
+          onPress: () => {
+            console.log('OTP verification successful - waiting for auth state change');
+            // Don't manually navigate - authentication state change will trigger automatic navigation
+          },
         },
       ]);
     } else {
-      Alert.alert('Verification Failed', result.message);
+      if (result.details) {
+        const newErrors: Record<string, string> = {};
+        Object.entries(result.details).forEach(([field, messages]) => {
+          if (messages.length > 0) {
+            newErrors[field] = messages[0];
+          }
+        });
+        setErrors(newErrors);
+      } else {
+        Alert.alert('Verification Failed', result.message);
+      }
     }
     setIsLoading(false);
   };
@@ -169,16 +191,16 @@ const RegisterScreen: React.FC = () => {
             {step === 'register' ? (
               <View style={styles.form}>
                 {[
-                  { key: 'firstName', label: 'First Name', placeholder: 'Enter your first name', icon: 'person-outline' },
-                  { key: 'lastName', label: 'Last Name (optional)', placeholder: 'Enter your last name', icon: 'person-circle-outline' },
-                  { key: 'email', label: 'Email', placeholder: 'Enter your email', icon: 'mail-outline', keyboardType: 'email-address' },
-                  { key: 'password', label: 'Password', placeholder: 'Create a password', icon: 'lock-closed-outline', secureTextEntry: true },
-                  { key: 'confirmPassword', label: 'Confirm Password', placeholder: 'Confirm your password', icon: 'lock-closed-outline', secureTextEntry: true },
+                  { key: 'firstName', label: 'First Name', placeholder: 'Enter your first name', icon: 'person-outline' as const },
+                  { key: 'lastName', label: 'Last Name (optional)', placeholder: 'Enter your last name', icon: 'person-circle-outline' as const },
+                  { key: 'email', label: 'Email', placeholder: 'Enter your email', icon: 'mail-outline' as const, keyboardType: 'email-address' as const },
+                  { key: 'password', label: 'Password', placeholder: 'Create a password', icon: 'lock-closed-outline' as const, secureTextEntry: true },
+                  { key: 'confirmPassword', label: 'Confirm Password', placeholder: 'Confirm your password', icon: 'lock-closed-outline' as const, secureTextEntry: true },
                 ].map(({ key, label, placeholder, icon, keyboardType, secureTextEntry }) => (
                   <View key={key} style={styles.inputGroup}>
                     <Text style={styles.label}>{label}</Text>
                     <View style={[styles.inputWrapper, errors[key] && styles.inputError]}>
-                      <Ionicons name={icon as any} size={20} color="#666" style={styles.icon} />
+                      <Ionicons name={icon} size={20} color="#666" style={styles.icon} />
                       <TextInput
                         style={styles.input}
                         placeholder={placeholder}
@@ -187,7 +209,7 @@ const RegisterScreen: React.FC = () => {
                         onChangeText={(value) => handleInputChange(key, value)}
                         autoCapitalize={key === 'email' ? 'none' : 'words'}
                         autoCorrect={false}
-                        keyboardType={keyboardType as any}
+                        keyboardType={keyboardType || 'default'}
                         secureTextEntry={secureTextEntry}
                       />
                     </View>

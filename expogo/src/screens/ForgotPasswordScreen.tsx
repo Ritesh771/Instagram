@@ -25,7 +25,7 @@ const ForgotPasswordScreen: React.FC = () => {
   // Redirect if already logged in
   useEffect(() => {
     if (isAuthenticated) {
-      navigation.navigate('Feed' as never);
+      navigation.navigate('Main' as never);
     }
   }, [isAuthenticated, navigation]);
 
@@ -57,7 +57,10 @@ const ForgotPasswordScreen: React.FC = () => {
         [
           {
             text: 'OK',
-            onPress: () => navigation.navigate('ResetPassword' as never),
+            onPress: () => {
+              // @ts-expect-error - Navigation type mismatch with parameters
+              navigation.navigate('ResetPassword', { email });
+            },
           },
         ]
       );
