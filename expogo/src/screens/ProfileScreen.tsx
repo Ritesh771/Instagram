@@ -20,7 +20,6 @@ const ProfileScreen: React.FC = () => {
   const { posts } = usePosts();
   const navigation = useNavigation();
 
-  const [activeTab, setActiveTab] = useState<'posts' | 'reels'>('posts');
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [editBio, setEditBio] = useState(user?.bio || '');
   const [isUpdating, setIsUpdating] = useState(false);
@@ -75,16 +74,23 @@ const ProfileScreen: React.FC = () => {
     }).start(() => setSelectedPost(null));
   };
 
-  const renderPhoto = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      onPress={() => navigation.navigate('PostView', { post: item })}
-      onLongPress={() => handleLongPress(item)}  // open preview
-      onPressOut={handleRelease}                 // close only on release
-    >
-      <Image source={{ uri: item.image }} style={styles.gridImage} />
-    </TouchableOpacity>
-  );
+  const renderPhoto = ({ item, index }: { item: any; index: number }) => (
+  <TouchableOpacity
+    activeOpacity={0.9}
+    onPress={() => {
+      // Navigate to PostView with full list and index
+      navigation.navigate('PostView', { 
+        posts: userPosts, 
+        initialIndex: index 
+      });
+    }}
+    onLongPress={() => handleLongPress(item)}
+    onPressOut={handleRelease}
+  >
+    <Image source={{ uri: item.image }} style={styles.gridImage} />
+  </TouchableOpacity>
+);
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -107,7 +113,11 @@ const ProfileScreen: React.FC = () => {
               style={styles.stat}
               onPress={() => {
                 if (userPosts.length > 0) {
-                  navigation.navigate('PostView', { post: userPosts[0] });
+                  // Navigate to PostView with all posts and start from first one
+                  navigation.navigate('PostView', {
+                    posts: userPosts,
+                    initialIndex: 0, // start from first post
+                  });
                 }
               }}
             >
@@ -172,8 +182,8 @@ const ProfileScreen: React.FC = () => {
 
         {/* Tabs */}
         <View style={styles.tabsRow}>
-          <TouchableOpacity style={styles.tabButton} onPress={() => setActiveTab('posts')}>
-            <Text style={[styles.tabText, activeTab === 'posts' && styles.activeTab]}>Posts</Text>
+          <TouchableOpacity style={styles.tabButton}>
+            <Text style={[styles.tabText && styles.activeTab]}>Posts</Text>
           </TouchableOpacity>
         </View>
 

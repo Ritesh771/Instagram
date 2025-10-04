@@ -37,11 +37,6 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const lastTap = useRef<number | null>(null);
 
-  // Add debugging to track like states
-  useEffect(() => {
-    console.log(`PostCard ${post.id}: isLiked=${isLiked}, likesCount=${likesCount}, user=${user?.username}`);
-  }, [post.id, isLiked, likesCount, user?.username]);
-
   const triggerHeartAnimation = () => {
     scaleAnim.setValue(0);
     Animated.spring(scaleAnim, {

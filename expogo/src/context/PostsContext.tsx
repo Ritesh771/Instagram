@@ -47,19 +47,15 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ children }) => {
 
   const fetchPosts = async () => {
     if (!isAuthenticated) {
-      console.log('PostsContext: Not authenticated, skipping fetch');
       return;
     }
 
     try {
       setIsLoading(true);
       setError(null);
-      console.log('PostsContext: Fetching posts for user:', user?.username);
       const response = await apiService.getPosts();
-      console.log('PostsContext: Fetched', response.data.length, 'posts');
       setPosts(response.data);
     } catch (error) {
-      console.log('PostsContext: Error fetching posts:', error);
       const apiError = apiService.handleError(error);
       setError(apiError.message);
     } finally {
@@ -81,13 +77,10 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ children }) => {
       // Add a small delay to ensure the disable takes effect
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      console.log('PostsContext: Creating post for user:', user?.username);
       const response = await apiService.createPost(formData);
-      console.log('PostsContext: Post created successfully');
       setPosts(prevPosts => [response.data, ...prevPosts]);
       return { success: true };
     } catch (error) {
-      console.log('PostsContext: Error creating post:', error);
       const apiError = apiService.handleError(error);
       
       // If it's a network error, provide a more helpful message
@@ -138,7 +131,6 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ children }) => {
 
     try {
       const response = await apiService.likePost(postId);
-      console.log('PostsContext: Like response:', response.data);
       
       // Update with server response to ensure accuracy
       setPosts(prevPosts =>
@@ -150,7 +142,6 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ children }) => {
       );
       return { success: true };
     } catch (error) {
-      console.log('PostsContext: Like error:', error);
       // Revert optimistic update on error
       setPosts(originalPosts);
       const apiError = apiService.handleError(error);
@@ -175,7 +166,6 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ children }) => {
 
     try {
       const response = await apiService.unlikePost(postId);
-      console.log('PostsContext: Unlike response:', response.data);
       
       // Update with server response to ensure accuracy
       setPosts(prevPosts =>
@@ -187,7 +177,6 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ children }) => {
       );
       return { success: true };
     } catch (error) {
-      console.log('PostsContext: Unlike error:', error);
       // Revert optimistic update on error
       setPosts(originalPosts);
       const apiError = apiService.handleError(error);
