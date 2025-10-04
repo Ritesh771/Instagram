@@ -1,11 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Switch, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 
 const SettingsScreen: React.FC = () => {
-  const { user, logout, updateProfile } = useAuth();
+  const { user, logout, updateProfile, enableBiometricLogin, disableBiometricLogin, isBiometricAvailable } = useAuth();
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isBiometricUpdating, setIsBiometricUpdating] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+
+  useEffect(() => {
+    checkBiometricAvailability();
+  }, []);
+
+  const checkBiometricAvailability = async () => {
+    const available = await isBiometricAvailable();
+    setBiometricAvailable(available.available);
+  };
 
   const handleToggle2FA = async (enabled: boolean) => {
     setIsUpdating(true);
@@ -16,6 +27,28 @@ const SettingsScreen: React.FC = () => {
       Alert.alert('Failed to update 2FA');
     }
     setIsUpdating(false);
+  };
+
+  const handleToggleBiometric = async (enabled: boolean) => {
+    setIsBiometricUpdating(true);
+    
+    if (enabled) {
+      const result = await enableBiometricLogin();
+      if (result.success) {
+        Alert.alert('Biometric Authentication Enabled', 'Your app will now require biometric authentication when reopened.');
+      } else {
+        Alert.alert('Failed to Enable Biometric Authentication', result.message || 'Please try again.');
+      }
+    } else {
+      const result = await disableBiometricLogin();
+      if (result.success) {
+        Alert.alert('Biometric Authentication Disabled', 'Biometric authentication has been turned off.');
+      } else {
+        Alert.alert('Failed to Disable Biometric Authentication', result.message || 'Please try again.');
+      }
+    }
+    
+    setIsBiometricUpdating(false);
   };
 
   const handleLogout = () => {
@@ -29,10 +62,16 @@ const SettingsScreen: React.FC = () => {
     );
   };
 
-  // Determine descriptive 2FA text
+  // Determine descriptive text
   const twoFAText = user?.two_factor_enabled
     ? "Two-Factor Authentication is ON. You'll need a code when logging in."
     : "Two-Factor Authentication is OFF. Your account is less secure.";
+
+  const biometricText = user?.biometric_enabled
+    ? "Biometric Authentication is ON. The app will lock when you leave and return."
+    : biometricAvailable
+      ? "Biometric Authentication is OFF. Enable for enhanced security."
+      : "Biometric Authentication is not available on this device.";
 
   return (
     <SafeAreaView style={styles.container}>
@@ -50,6 +89,21 @@ const SettingsScreen: React.FC = () => {
               value={user?.two_factor_enabled || false}
               onValueChange={handleToggle2FA}
               disabled={isUpdating}
+            />
+          </View>
+        </View>
+
+        {/* Biometric Authentication */}
+        <View style={styles.card}>
+          <View style={styles.cardRow}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={styles.cardTitle}>Biometric Authentication</Text>
+              <Text style={styles.cardSubtitle}>{biometricText}</Text>
+            </View>
+            <Switch
+              value={user?.biometric_enabled || false}
+              onValueChange={handleToggleBiometric}
+              disabled={isBiometricUpdating || !biometricAvailable}
             />
           </View>
         </View>

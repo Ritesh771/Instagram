@@ -24,8 +24,16 @@ const Stack = createStackNavigator();
 const AppNavigator: React.FC = () => {
   const { isAuthenticated, isLoading, isBiometricLocked } = useAuth();
 
+  // Debug logging
+  useEffect(() => {
+    console.log('=== AppNavigator State ===');
+    console.log('isAuthenticated:', isAuthenticated);
+    console.log('isLoading:', isLoading);
+    console.log('isBiometricLocked:', isBiometricLocked);
+  }, [isAuthenticated, isLoading, isBiometricLocked]);
+
   if (isLoading) {
-    // You can create a proper LoadingScreen component later
+    console.log('AppNavigator: Showing loading state');
     return null;
   }
 
