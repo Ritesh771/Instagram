@@ -19,6 +19,7 @@ import FollowersScreen from '@/screens/FollowersScreen';
 import FollowingScreen from '@/screens/FollowingScreen';
 import PostViewScreen from '@/screens/PostViewScreen';
 import NotificationsScreen from '@/screens/NotificationsScreen';
+import SearchScreen from '@/screens/SearchScreen';
 
 const Stack = createStackNavigator();
 
@@ -35,7 +36,6 @@ const AppNavigator: React.FC = () => {
         const nowInProgress = savedStep === 'verify';
         
         if (wasInProgress !== nowInProgress) {
-          console.log('AppNavigator: Registration status changed:', { from: wasInProgress, to: nowInProgress });
           setIsRegistrationInProgress(nowInProgress);
         }
       } catch (error) {
@@ -51,16 +51,10 @@ const AppNavigator: React.FC = () => {
     return () => clearInterval(interval);
   }, [isLoading, isRegistrationInProgress]);
 
+  // Remove excessive logging
   if (isLoading) {
-    console.log('AppNavigator: Still loading, showing loading screen');
     return null;
   }
-
-  console.log('AppNavigator: Rendering with state:', {
-    isAuthenticated,
-    isBiometricLocked,
-    isRegistrationInProgress
-  });
 
   return (
     <NavigationContainer>
@@ -86,6 +80,8 @@ const AppNavigator: React.FC = () => {
               <Stack.Screen name="Following" component={FollowingScreen} />
               <Stack.Screen name="PostView" component={PostViewScreen} />
               <Stack.Screen name="Notifications" component={NotificationsScreen} />
+              <Stack.Screen name="Search" component={SearchScreen} />
+
             </>
           )
         ) : (

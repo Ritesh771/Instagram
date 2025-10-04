@@ -159,14 +159,10 @@ class ApiService {
     email: string;
     password: string;
   }): Promise<AxiosResponse<{ detail: string; username: string }>> {
-    console.log('ApiService: Making register API call to:', `${API_BASE_URL}/auth/register/`);
-    console.log('ApiService: Register data:', { ...data, password: '[HIDDEN]' });
     try {
       const response = await this.api.post('/auth/register/', data);
-      console.log('ApiService: Register API response:', response.data);
       return response;
     } catch (error) {
-      console.log('ApiService: Register API error:', error);
       throw error;
     }
   }

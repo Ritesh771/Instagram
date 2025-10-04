@@ -43,7 +43,6 @@ const BiometricLockScreen: React.FC = () => {
       }
       // If successful, biometricLogin will update the auth state and navigate away
     } catch (error) {
-      console.error('Biometric auth error:', error);
       Alert.alert('Error', 'An error occurred during biometric authentication.');
     } finally {
       setIsAuthenticating(false);

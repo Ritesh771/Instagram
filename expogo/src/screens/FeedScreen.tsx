@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { usePosts } from '@/context/PostsContext';
 import { useAuth } from '@/context/AuthContext';
 import PostCard from '@/components/PostCard';
-import { Ionicons } from '@expo/vector-icons'; // For notification icon
+import { Ionicons } from '@expo/vector-icons';
 
 const FeedScreen: React.FC = ({ navigation }: any) => {
   const { posts, isLoading, error, fetchPosts } = usePosts();
@@ -22,15 +22,23 @@ const FeedScreen: React.FC = ({ navigation }: any) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header with Notification Icon */}
+      {/* Header with Search and Notification */}
       <View style={styles.header}>
         <Text style={styles.welcomeText}>Welcome, {user?.username}!</Text>
-        <TouchableOpacity
-          style={styles.notificationButton}
-          onPress={() => navigation.navigate('Notifications')}
-        >
-          <Ionicons name="notifications-outline" size={28} color="#007AFF" />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => navigation.navigate('Search')}
+          >
+            <Ionicons name="search-outline" size={26} color="#007AFF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => navigation.navigate('Notifications')}
+          >
+            <Ionicons name="notifications-outline" size={28} color="#007AFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
@@ -43,6 +51,7 @@ const FeedScreen: React.FC = ({ navigation }: any) => {
             <Text style={styles.emptyText}>No posts yet. Be the first to share!</Text>
           </View>
         }
+        contentContainerStyle={{ paddingBottom: 80 }} // avoid tab bar overlap
       />
     </SafeAreaView>
   );
@@ -58,7 +67,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f8f8',
   },
   welcomeText: { fontSize: 18, fontWeight: 'bold' },
-  notificationButton: { padding: 5 },
+  headerRight: { flexDirection: 'row' },
+  iconButton: { marginLeft: 15 },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   errorText: { fontSize: 16, color: 'red', textAlign: 'center' },
   emptyText: { fontSize: 16, color: '#666', textAlign: 'center' },
