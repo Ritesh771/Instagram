@@ -15,7 +15,6 @@ import * as Animatable from 'react-native-animatable';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../context/AuthContext';
-import BiometricLogin from '../components/BiometricLogin';
 
 type RootStackParamList = {
   Login: undefined;
@@ -199,17 +198,6 @@ const LoginScreen: React.FC = () => {
                   </Text>
                 </TouchableOpacity>
               </Animatable.View>
-
-              {/* Biometric Login Option */}
-              <View style={styles.dividerContainer}>
-                <View style={styles.divider} />
-                <Text style={styles.dividerText}>Or</Text>
-                <View style={styles.divider} />
-              </View>
-
-              <BiometricLogin onSuccess={() => {
-                // Don't manually navigate - authentication state change will trigger automatic navigation
-              }} />
             </View>
           ) : (
             <View style={styles.inputContainer}>
@@ -400,22 +388,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  divider: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  dividerText: {
-    color: '#fff',
-    marginHorizontal: 15,
-    fontSize: 16,
-    opacity: 0.8,
-  },
+
   linkContainer: {
     alignItems: 'center',
     marginTop: 10,

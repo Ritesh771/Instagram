@@ -259,6 +259,7 @@ class ApiService {
   async updateProfile(data: {
     bio?: string;
     two_factor_enabled?: boolean;
+    biometric_enabled?: boolean;
   }): Promise<AxiosResponse<User>> {
     return this.api.patch('/auth/profile/', data);
   }
