@@ -3,6 +3,13 @@ import { AppState, AppStateStatus } from 'react-native';
 import { apiService, User, AuthResponse } from '@/services/api';
 import { Storage } from '@/utils/storage';
 
+// Extend the Window interface to include our custom property
+declare global {
+  interface Window {
+    _biometricReEnableTimeout: NodeJS.Timeout | null;
+  }
+}
+
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
@@ -27,6 +34,11 @@ interface AuthContextType {
   unlockBiometricLock: () => void;
   triggerBiometricCheck: () => Promise<void>;
   clearPendingOtp: () => void;
+  // Biometric check control methods
+  disableBiometricCheckTemporarily: (duration?: number) => void;
+  enableBiometricCheck: () => void;
+  disableBiometricForSystemOperation: () => void;
+  reEnableBiometricAfterSystemOperation: (delay?: number) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -49,38 +61,48 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isBiometricLocked, setIsBiometricLocked] = useState(false);
   const [lastBackgroundTime, setLastBackgroundTime] = useState<number | null>(null);
   const [pendingOtpData, setPendingOtpData] = useState<{ username: string; message: string } | null>(null);
+  const [isRegistrationInProgress, setIsRegistrationInProgress] = useState(false);
+  const [biometricCheckEnabled, setBiometricCheckEnabled] = useState(true); // Allow temporary disabling
 
   useEffect(() => {
     // Check if user is already authenticated on app load
     const checkAuth = async () => {
       try {
+        console.log('AuthContext: Checking authentication status on app load...');
         const isAuth = await apiService.isAuthenticated();
-        console.log('Initial auth check:', isAuth);
+        console.log('AuthContext: isAuthenticated result:', isAuth);
         
         if (isAuth) {
           // Try to get user data from storage first
           const savedUser = await Storage.getItem('user');
-          console.log('Saved user from storage:', savedUser);
+          console.log('AuthContext: Saved user data found:', !!savedUser);
           
           if (savedUser) {
             const userData = JSON.parse(savedUser);
+            console.log('AuthContext: Restoring user from storage:', {
+              id: userData.id,
+              username: userData.username,
+              email: userData.email,
+              is_verified: userData.is_verified
+            });
             setUser(userData);
-            console.log('User data loaded:', userData);
-            console.log('User biometric enabled:', userData.biometric_enabled);
             
             // Always check if biometric lock should be applied on app start
             // This ensures biometric lock works even on fresh app launch
             if (userData.biometric_enabled) {
-              console.log('User has biometric enabled, checking lock requirement on startup...');
               setTimeout(() => {
                 checkBiometricLockRequirement();
               }, 500); // Small delay to ensure everything is initialized
             }
           }
+        } else {
+          console.log('AuthContext: No authentication found');
         }
       } catch (error) {
+        console.log('AuthContext: Authentication check failed, logging out:', error);
         await apiService.logout();
       } finally {
+        console.log('AuthContext: Authentication check complete');
         setIsLoading(false);
       }
     };
@@ -93,21 +115,46 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       console.log('App state changed to:', nextAppState);
       
-      if (nextAppState === 'background' || nextAppState === 'inactive') {
-        // Track when app goes to background
+      if (nextAppState === 'background') {
+        // Only track when app truly goes to background (not just inactive)
         const backgroundTime = Date.now();
         setLastBackgroundTime(backgroundTime);
         console.log('App went to background at:', new Date(backgroundTime).toLocaleTimeString());
       } else if (nextAppState === 'active' && user) {
-        // App came to foreground, always check if biometric lock is needed
-        console.log('App became active, user exists:', !!user);
-        console.log('User biometric enabled:', user?.biometric_enabled);
-        
-        // Always check biometric lock requirement when app becomes active
-        // No time threshold - ask every time user returns to app
+        // App came to foreground - check if we have a valid background time
         if (lastBackgroundTime) {
-          console.log('App returned from background, checking biometric lock requirement...');
-          await checkBiometricLockRequirement();
+          const timeInBackground = Date.now() - lastBackgroundTime;
+          console.log('App became active after', timeInBackground, 'ms in background');
+          console.log('User biometric enabled:', user?.biometric_enabled);
+          
+          // Only trigger biometric lock if:
+          // 1. App was truly in background (not just inactive)
+          // 2. User has biometric enabled
+          // 3. Sufficient time has passed to consider it a real app switch (> 5 seconds)
+          // 4. Biometric check is not temporarily disabled
+          if (timeInBackground > 5000 && user?.biometric_enabled && biometricCheckEnabled) {
+            // Additional safeguard: Only trigger if we're reasonably sure this is a real app switch
+            // and not a system operation (like camera/gallery access)
+            console.log('Checking if this is a real app switch...');
+            
+            // If biometric check is disabled, don't trigger
+            if (!biometricCheckEnabled) {
+              console.log('Skipping biometric check - checks are temporarily disabled');
+              setLastBackgroundTime(null); // Reset to prevent accumulation
+              return;
+            }
+            
+            console.log('App returned from background, checking biometric lock requirement...');
+            await checkBiometricLockRequirement();
+          } else {
+            console.log('Skipping biometric check - short inactive period, biometric disabled, or check disabled');
+            // Reset background time to prevent accumulation
+            setLastBackgroundTime(null);
+          }
+        } else {
+          // No valid background time, reset to prevent accumulation
+          console.log('No valid background time, resetting');
+          setLastBackgroundTime(null);
         }
       }
     };
@@ -225,13 +272,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const register = async (firstName: string, lastName: string, email: string, password: string) => {
     try {
       setIsLoading(true);
+      setIsRegistrationInProgress(true); // Mark registration as in progress
+      console.log('AuthContext: Starting registration API call...');
       const response = await apiService.register({ first_name: firstName, last_name: lastName, email, password });
+      console.log('AuthContext: Registration API success:', response.data);
+      
       return { success: true, message: response.data.detail, username: response.data.username };
     } catch (error) {
+      console.log('AuthContext: Registration API error:', error);
       const apiError = apiService.handleError(error);
+      console.log('AuthContext: Processed error:', apiError);
+      setIsRegistrationInProgress(false); // Reset on error
       return { success: false, message: apiError.message, details: apiError.details };
     } finally {
       setIsLoading(false);
+      console.log('AuthContext: Registration API call completed');
     }
   };
 
@@ -239,6 +294,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     apiService.logout();
     setUser(null);
     setIsBiometricLocked(false);
+    setIsRegistrationInProgress(false); // Reset registration state on logout
     setPendingOtpData(null); // Clear pending OTP data on logout
   };
 
@@ -277,32 +333,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   // Biometric methods
-  const biometricLogin = async () => {
-    try {
-      setIsLoading(true);
-      const result = await apiService.authenticateWithBiometrics();
-      if (result.success) {
-        // Unlock the biometric lock
-        setIsBiometricLocked(false);
-        console.log('Biometric authentication successful, app unlocked');
-        
-        // Get user data from storage (already authenticated)
-        const savedUser = await Storage.getItem('user');
-        if (savedUser) {
-          setUser(JSON.parse(savedUser));
-        }
-      }
-      return result;
-    } catch (error) {
-      return { success: false, message: 'Biometric login failed' };
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const unlockBiometricLock = () => {
     setIsBiometricLocked(false);
-    console.log('Biometric lock manually unlocked');
+    // Also reset background time to prevent immediate re-trigger
+    setLastBackgroundTime(null);
+    // Re-enable biometric checks
+    setBiometricCheckEnabled(true);
+    console.log('Biometric lock manually unlocked and background time reset');
   };
 
   const enableBiometricLogin = async () => {
@@ -397,6 +434,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         await apiService.saveTokens(response.data.access, response.data.refresh);
         setUser(response.data.user);
         await Storage.setItem('user', JSON.stringify(response.data.user));
+        
+        // Clear registration state after successful verification
+        setIsRegistrationInProgress(false);
+        console.log('AuthContext: OTP verification successful - user authenticated and registration state cleared');
       }
       
       return { success: true, message: response.data.detail };
@@ -414,6 +455,49 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     await checkBiometricLockRequirement();
   };
 
+  // Biometric check control methods
+  const disableBiometricCheckTemporarily = (duration: number = 30000) => { // Default 30 seconds
+    console.log('Disabling biometric check temporarily for', duration, 'ms');
+    setBiometricCheckEnabled(false);
+    
+    // If currently locked, unlock it
+    if (isBiometricLocked) {
+      setIsBiometricLocked(false);
+      setLastBackgroundTime(null);
+      console.log('Unlocking current biometric lock due to temporary disable');
+    }
+    
+    // Re-enable after the specified duration
+    setTimeout(() => {
+      console.log('Re-enabling biometric check after', duration, 'ms');
+      setBiometricCheckEnabled(true);
+    }, duration);
+  };
+
+  const enableBiometricCheck = () => {
+    console.log('Enabling biometric check');
+    setBiometricCheckEnabled(true);
+    // Also reset background time to prevent immediate re-trigger
+    setLastBackgroundTime(null);
+  };
+
+  // New method to completely disable biometric checks for system operations
+  const disableBiometricForSystemOperation = () => {
+    console.log('Disabling biometric for system operation');
+    setBiometricCheckEnabled(false);
+  };
+
+  // New method to re-enable biometric checks after system operations
+  const reEnableBiometricAfterSystemOperation = (delay: number = 1000) => {
+    console.log('Scheduling biometric re-enable after system operation with delay:', delay);
+    
+    // Set new timeout
+    setTimeout(() => {
+      console.log('Re-enabling biometric check after system operation');
+      setBiometricCheckEnabled(true);
+    }, delay);
+  };
+
   const getUsernamePreview = async (firstName: string, lastName: string, email: string) => {
     try {
       const response = await apiService.getUsernamePreview({
@@ -428,7 +512,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const value: AuthContextType = {
+  // Biometric login function
+  const biometricLogin = async () => {
+    try {
+      setIsLoading(true);
+      console.log('Attempting biometric login...');
+      
+      // Authenticate with biometrics
+      const result = await apiService.authenticateWithBiometrics();
+      console.log('Biometric authentication result:', result);
+      
+      if (result.success) {
+        // For biometric login, we need to get the user data from storage or API
+        // Since we don't have tokens from biometric auth alone, we'll just unlock the UI
+        setIsBiometricLocked(false);
+        setLastBackgroundTime(null); // Reset background time
+        
+        return { success: true, message: 'Biometric authentication successful' };
+      } else {
+        return { success: false, message: result.message || 'Biometric authentication failed' };
+      }
+    } catch (error) {
+      console.error('Biometric login error:', error);
+      const apiError = apiService.handleError(error);
+      return { success: false, message: apiError.message };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Debug authentication state changes
+  useEffect(() => {
+    console.log('AuthContext: Authentication state changed:', {
+      isAuthenticated: !!user,
+      user: user ? { id: user.id, username: user.username, email: user.email } : null,
+      isLoading,
+      isBiometricLocked,
+      biometricCheckEnabled
+    });
+  }, [user, isLoading, isBiometricLocked, biometricCheckEnabled]);
+
+  const value = {
     user,
     isAuthenticated: !!user,
     isLoading,
@@ -444,6 +568,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     updateUser,
     updateProfile,
     getUsernamePreview,
+    // Biometric methods
     biometricLogin,
     enableBiometricLogin,
     disableBiometricLogin,
@@ -451,6 +576,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     unlockBiometricLock,
     triggerBiometricCheck,
     clearPendingOtp,
+    // Biometric check control methods
+    disableBiometricCheckTemporarily,
+    enableBiometricCheck,
+    disableBiometricForSystemOperation,
+    reEnableBiometricAfterSystemOperation,
   };
 
   return (
@@ -459,3 +589,5 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
+export default AuthContext;

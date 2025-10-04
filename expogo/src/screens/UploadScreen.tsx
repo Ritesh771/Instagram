@@ -1,19 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Image, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { usePosts } from '@/context/PostsContext';
+import { useAuth } from '@/context/AuthContext';
 
 const UploadScreen: React.FC = () => {
   const [caption, setCaption] = useState('');
   const [selectedImage, setSelectedImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const { createPost, isLoading } = usePosts();
+  const { disableBiometricForSystemOperation, reEnableBiometricAfterSystemOperation } = useAuth();
+
+  // Disable biometric checks when upload screen is accessed
+  useEffect(() => {
+    disableBiometricForSystemOperation();
+    console.log('UploadScreen: Disabled biometric checks for post creation');
+    
+    // Return a cleanup function to re-enable when component unmounts
+    return () => {
+      console.log('UploadScreen: Re-enabling biometric checks');
+      reEnableBiometricAfterSystemOperation(1000);
+    };
+  }, []);
 
   const pickImage = async () => {
+    // Disable biometric checks before launching image picker
+    disableBiometricForSystemOperation();
+    
     // Request permissions
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Please grant permission to access your photos');
+      reEnableBiometricAfterSystemOperation(500);
       return;
     }
 
@@ -28,13 +46,20 @@ const UploadScreen: React.FC = () => {
     if (!result.canceled) {
       setSelectedImage(result.assets[0]);
     }
+    
+    // Re-enable biometric checks after image selection
+    reEnableBiometricAfterSystemOperation(2000);
   };
 
   const takePhoto = async () => {
+    // Disable biometric checks before launching camera
+    disableBiometricForSystemOperation();
+    
     // Request permissions
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Please grant permission to access your camera');
+      reEnableBiometricAfterSystemOperation(500);
       return;
     }
 
@@ -48,6 +73,9 @@ const UploadScreen: React.FC = () => {
     if (!result.canceled) {
       setSelectedImage(result.assets[0]);
     }
+    
+    // Re-enable biometric checks after photo taken
+    reEnableBiometricAfterSystemOperation(2000);
   };
 
   const handleUpload = async () => {
@@ -63,11 +91,14 @@ const UploadScreen: React.FC = () => {
         uri: selectedImage.uri,
         type: 'image/jpeg',
         name: 'photo.jpg',
-      } as any);
+      } as unknown as Blob);
       if (caption.trim()) {
         formData.append('caption', caption.trim());
       }
 
+      // Disable biometric checks during upload
+      disableBiometricForSystemOperation();
+      
       const result = await createPost(formData);
       if (result.success) {
         setCaption('');
@@ -78,6 +109,9 @@ const UploadScreen: React.FC = () => {
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to upload post');
+    } finally {
+      // Re-enable biometric checks after upload attempt
+      reEnableBiometricAfterSystemOperation(3000);
     }
   };
 

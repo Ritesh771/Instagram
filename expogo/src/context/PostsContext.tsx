@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { apiService, Post } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 
 interface PostsContextType {
   posts: Post[];
@@ -30,14 +31,35 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ children }) => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user, isAuthenticated, disableBiometricForSystemOperation, reEnableBiometricAfterSystemOperation } = useAuth();
+
+  // Reset posts when user changes or logs out
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      // User logged in or switched accounts - fetch fresh posts
+      fetchPosts();
+    } else {
+      // User logged out - clear posts
+      setPosts([]);
+      setError(null);
+    }
+  }, [user?.id, isAuthenticated]); // Trigger when user ID changes or auth status changes
 
   const fetchPosts = async () => {
+    if (!isAuthenticated) {
+      console.log('PostsContext: Not authenticated, skipping fetch');
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
+      console.log('PostsContext: Fetching posts for user:', user?.username);
       const response = await apiService.getPosts();
+      console.log('PostsContext: Fetched', response.data.length, 'posts');
       setPosts(response.data);
     } catch (error) {
+      console.log('PostsContext: Error fetching posts:', error);
       const apiError = apiService.handleError(error);
       setError(apiError.message);
     } finally {
@@ -46,16 +68,45 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ children }) => {
   };
 
   const createPost = async (formData: FormData) => {
+    if (!isAuthenticated || !user) {
+      return { success: false, message: 'You must be logged in to create posts' };
+    }
+
     try {
       setIsLoading(true);
+      
+      // Aggressively disable biometric checks during post creation
+      disableBiometricForSystemOperation();
+      
+      // Add a small delay to ensure the disable takes effect
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      console.log('PostsContext: Creating post for user:', user?.username);
       const response = await apiService.createPost(formData);
+      console.log('PostsContext: Post created successfully');
       setPosts(prevPosts => [response.data, ...prevPosts]);
       return { success: true };
     } catch (error) {
+      console.log('PostsContext: Error creating post:', error);
       const apiError = apiService.handleError(error);
+      
+      // If it's a network error, provide a more helpful message
+      if (apiError.message.includes('Network Error') || apiError.message.includes('connect')) {
+        return { success: false, message: 'Network connection failed. Please check your internet connection and try again.' };
+      }
+      
+      // If it's an authentication error, suggest re-authentication
+      if (apiError.message.includes('Unauthorized') || apiError.message.includes('401')) {
+        // Try to re-enable biometric checks and suggest re-auth
+        reEnableBiometricAfterSystemOperation();
+        return { success: false, message: 'Authentication expired. Please re-authenticate and try again.' };
+      }
+      
       return { success: false, message: apiError.message };
     } finally {
       setIsLoading(false);
+      // Re-enable biometric checks after post creation attempt
+      reEnableBiometricAfterSystemOperation(5000); // Re-enable after 5 seconds
     }
   };
 
@@ -71,8 +122,25 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ children }) => {
   };
 
   const likePost = async (postId: number) => {
+    if (!isAuthenticated || !user) {
+      return { success: false, message: 'You must be logged in to like posts' };
+    }
+
+    // Optimistic update
+    const originalPosts = [...posts];
+    setPosts(prevPosts =>
+      prevPosts.map(post =>
+        post.id === postId
+          ? { ...post, is_liked: true, likes_count: post.likes_count + 1 }
+          : post
+      )
+    );
+
     try {
       const response = await apiService.likePost(postId);
+      console.log('PostsContext: Like response:', response.data);
+      
+      // Update with server response to ensure accuracy
       setPosts(prevPosts =>
         prevPosts.map(post =>
           post.id === postId
@@ -82,14 +150,34 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ children }) => {
       );
       return { success: true };
     } catch (error) {
+      console.log('PostsContext: Like error:', error);
+      // Revert optimistic update on error
+      setPosts(originalPosts);
       const apiError = apiService.handleError(error);
       return { success: false, message: apiError.message };
     }
   };
 
   const unlikePost = async (postId: number) => {
+    if (!isAuthenticated || !user) {
+      return { success: false, message: 'You must be logged in to unlike posts' };
+    }
+
+    // Optimistic update
+    const originalPosts = [...posts];
+    setPosts(prevPosts =>
+      prevPosts.map(post =>
+        post.id === postId
+          ? { ...post, is_liked: false, likes_count: Math.max(0, post.likes_count - 1) }
+          : post
+      )
+    );
+
     try {
       const response = await apiService.unlikePost(postId);
+      console.log('PostsContext: Unlike response:', response.data);
+      
+      // Update with server response to ensure accuracy
       setPosts(prevPosts =>
         prevPosts.map(post =>
           post.id === postId
@@ -99,14 +187,16 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ children }) => {
       );
       return { success: true };
     } catch (error) {
+      console.log('PostsContext: Unlike error:', error);
+      // Revert optimistic update on error
+      setPosts(originalPosts);
       const apiError = apiService.handleError(error);
       return { success: false, message: apiError.message };
     }
   };
 
-  useEffect(() => {
-    fetchPosts();
-  }, []);
+  // Remove the old useEffect that ran fetchPosts on mount
+  // since we now handle it in the user change effect
 
   const value: PostsContextType = {
     posts,

@@ -15,9 +15,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '@/context/AuthContext';
+import { Storage } from '@/utils/storage';
 
 const RegisterScreen: React.FC = () => {
   const [step, setStep] = useState<'register' | 'verify'>('register');
+  const [isStepLocked, setIsStepLocked] = useState(false);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -37,11 +39,69 @@ const RegisterScreen: React.FC = () => {
   const { register, verifyOTP, getUsernamePreview, isAuthenticated } = useAuth();
   const navigation = useNavigation();
 
-  useEffect(() => {
-    console.log('RegisterScreen - isAuthenticated changed:', isAuthenticated);
-    // Don't manually navigate here - let React Navigation handle it automatically
-  }, [isAuthenticated, navigation]);
+  console.log('RegisterScreen RENDER: step =', step);
+  console.log('RegisterScreen RENDER: UI will show', step === 'register' ? 'REGISTRATION FORM' : 'OTP VERIFICATION');
 
+  // Initialize step from storage on component mount
+  useEffect(() => {
+    const initializeStep = async () => {
+      try {
+        const savedStep = await Storage.getItem('registration_step');
+        const savedOtpData = await Storage.getItem('registration_otp_data');
+        const savedUsername = await Storage.getItem('registration_username');
+        
+        if (savedStep === 'verify' && savedOtpData && savedUsername) {
+          console.log('RegisterScreen: Restoring OTP step from storage');
+          setIsStepLocked(true);
+          setStep('verify');
+          setOtpData(JSON.parse(savedOtpData));
+          setFinalUsername(savedUsername);
+        }
+      } catch (error) {
+        console.log('RegisterScreen: Error restoring step:', error);
+      }
+    };
+    
+    initializeStep();
+  }, []);
+
+  // Continuous monitoring to maintain step state during re-renders
+  useEffect(() => {
+    const maintainStep = async () => {
+      try {
+        const savedStep = await Storage.getItem('registration_step');
+        if (savedStep === 'verify' && step !== 'verify') {
+          console.log('RegisterScreen: Step mismatch detected, restoring verify step');
+          const savedOtpData = await Storage.getItem('registration_otp_data');
+          const savedUsername = await Storage.getItem('registration_username');
+          
+          if (savedOtpData && savedUsername) {
+            setIsStepLocked(true);
+            setStep('verify');
+            setOtpData(JSON.parse(savedOtpData));
+            setFinalUsername(savedUsername);
+          }
+        }
+      } catch (error) {
+        console.log('RegisterScreen: Error maintaining step:', error);
+      }
+    };
+    
+    maintainStep();
+  }); // No dependency array - runs on every render
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (isAuthenticated) {
+      console.log('RegisterScreen: User authenticated, clearing registration state');
+      // Clear registration state when user gets authenticated
+      Storage.removeItem('registration_step');
+      Storage.removeItem('registration_otp_data');
+      Storage.removeItem('registration_username');
+    }
+  }, [isAuthenticated]);
+
+  // Update username preview when names change
   useEffect(() => {
     const updateUsernamePreview = async () => {
       if (formData.firstName.trim()) {
@@ -53,7 +113,7 @@ const RegisterScreen: React.FC = () => {
         setGeneratedUsername('');
       }
     };
-
+    
     updateUsernamePreview();
   }, [formData.firstName, formData.lastName, formData.email, getUsernamePreview]);
 
@@ -66,7 +126,7 @@ const RegisterScreen: React.FC = () => {
 
     if (!formData.email.trim()) {
       newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
       newErrors.email = 'Email is invalid';
     }
 
@@ -85,30 +145,100 @@ const RegisterScreen: React.FC = () => {
   };
 
   const handleRegister = async () => {
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      console.log('RegisterScreen: Form validation failed, errors:', errors);
+      return;
+    }
 
     setIsLoading(true);
-    const result = await register(formData.firstName, formData.lastName, formData.email, formData.password);
-
-    if (result.success) {
-      setFinalUsername(result.username || generatedUsername);
-      setOtpData({ ...otpData, email: formData.email });
+    console.log('RegisterScreen: Starting registration...');
+    
+    try {
+      // Pre-set the step and storage to prevent any navigation away
+      const username = generatedUsername;
+      const otpDataForStep = {
+        email: formData.email.trim(),
+        code: ''
+      };
+      
+      // Immediately persist to storage and lock the step BEFORE API call
+      await Storage.setItem('registration_step', 'verify');
+      await Storage.setItem('registration_otp_data', JSON.stringify(otpDataForStep));
+      await Storage.setItem('registration_username', username);
+      
+      console.log('RegisterScreen: Pre-setting verification step and storage');
+      
+      // Set UI state immediately
+      setIsStepLocked(true);
+      setFinalUsername(username);
+      setOtpData(otpDataForStep);
       setStep('verify');
-      Alert.alert('Registration Successful', result.message || 'Please check your email for verification code.');
-    } else {
-      if (result.details) {
-        const newErrors: Record<string, string> = {};
-        Object.entries(result.details).forEach(([field, messages]) => {
-          if (messages.length > 0) {
-            newErrors[field] = messages[0]; // Take the first error message for each field
-          }
-        });
-        setErrors(newErrors);
+      
+      // Now make the API call
+      const result = await register(formData.firstName.trim(), formData.lastName.trim(), formData.email.trim(), formData.password);
+      console.log('RegisterScreen: Registration result received:', result);
+      
+      if (result.success) {
+        console.log('RegisterScreen: Registration successful - OTP step already shown');
+        // Update username if different from generated one
+        const finalUsernameFromAPI = result.username || username;
+        if (finalUsernameFromAPI !== username) {
+          setFinalUsername(finalUsernameFromAPI);
+          await Storage.setItem('registration_username', finalUsernameFromAPI);
+        }
       } else {
-        Alert.alert('Registration Failed', result.message);
+        console.log('RegisterScreen: Registration failed, reverting to register step:', result);
+        
+        // Revert to registration step on failure
+        await Storage.removeItem('registration_step');
+        await Storage.removeItem('registration_otp_data');
+        await Storage.removeItem('registration_username');
+        setIsStepLocked(false);
+        setStep('register');
+        
+        if (result.details) {
+          const newErrors: Record<string, string> = {};
+          Object.entries(result.details).forEach(([field, messages]) => {
+            if (messages.length > 0) {
+              newErrors[field] = messages[0];
+            }
+          });
+          setErrors(newErrors);
+          
+          // Show user-friendly message for common errors
+          if (result.details.email && result.details.email.some(msg => msg.includes('already exists'))) {
+            Alert.alert(
+              'Email Already Registered', 
+              'This email is already registered. Please use a different email or try logging in instead.',
+              [
+                { text: 'Try Different Email', style: 'default' },
+                { text: 'Go to Login', style: 'default', onPress: () => navigation.navigate('Login' as never) }
+              ]
+            );
+          }
+        } else {
+          Alert.alert(
+            'Registration Failed',
+            result.message || 'An error occurred during registration.'
+          );
+        }
       }
+    } catch (error) {
+      console.log('RegisterScreen: Unexpected error during registration:', error);
+      // Revert to registration step on error
+      await Storage.removeItem('registration_step');
+      await Storage.removeItem('registration_otp_data');
+      await Storage.removeItem('registration_username');
+      setIsStepLocked(false);
+      setStep('register');
+      
+      Alert.alert(
+        'Registration Error',
+        'An unexpected error occurred. Please try again.'
+      );
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const handleVerifyOTP = async () => {
@@ -119,17 +249,17 @@ const RegisterScreen: React.FC = () => {
 
     setIsLoading(true);
     const result = await verifyOTP(otpData.email, otpData.code);
-
+    
     if (result.success) {
-      Alert.alert('Account Verified', 'Your account has been verified successfully!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            console.log('OTP verification successful - waiting for auth state change');
-            // Don't manually navigate - authentication state change will trigger automatic navigation
-          },
-        },
-      ]);
+      // Success - user will be automatically navigated by AppNavigator
+      // since verifyOTP sets authentication state
+      console.log('RegisterScreen: OTP verification successful, clearing registration state');
+      
+      // Clear registration state from storage
+      await Storage.removeItem('registration_step');
+      await Storage.removeItem('registration_otp_data');
+      await Storage.removeItem('registration_username');
+      setIsStepLocked(false);
     } else {
       if (result.details) {
         const newErrors: Record<string, string> = {};
@@ -140,24 +270,30 @@ const RegisterScreen: React.FC = () => {
         });
         setErrors(newErrors);
       } else {
-        Alert.alert('Verification Failed', result.message);
+        Alert.alert(
+          'Verification Failed',
+          result.message || 'Invalid verification code. Please try again.'
+        );
       }
     }
     setIsLoading(false);
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    // Trim whitespace for email field to prevent validation issues
+    const processedValue = field === 'email' ? value.trim().toLowerCase() : value;
+    setFormData(prev => ({ ...prev, [field]: processedValue }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
   };
 
   const handleOtpChange = (field: string, value: string) => {
+    // For code field, only allow digits
     if (field === 'code') {
       value = value.replace(/\D/g, '');
     }
-
+    
     setOtpData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -182,8 +318,8 @@ const RegisterScreen: React.FC = () => {
               </Text>
               <Text style={styles.subtitle}>
                 {step === 'register'
-                  ? 'Create your account to start sharing moments'
-                  : `Verify your email to complete registration.\nYour username will be @${finalUsername}`}
+                  ? 'Create your account to start sharing'
+                  : `We've sent a verification code to ${otpData.email}. Your username will be @${finalUsername}`}
               </Text>
             </View>
 
@@ -228,7 +364,7 @@ const RegisterScreen: React.FC = () => {
                 )}
 
                 <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={isLoading} activeOpacity={0.8}>
-                  <LinearGradient colors={isLoading ? ['#bbb', '#ccc'] : ['#007AFF', '#005BBB']} style={styles.buttonGradient}>
+                  <LinearGradient colors={isLoading ? ['#bbb', '#ccc'] : ['#E1306C', '#F56040']} style={styles.buttonGradient}>
                     <Text style={styles.buttonText}>{isLoading ? 'Creating Account...' : 'Create Account'}</Text>
                   </LinearGradient>
                 </TouchableOpacity>
@@ -241,33 +377,64 @@ const RegisterScreen: React.FC = () => {
                   <TextInput
                     style={[styles.input, styles.codeInput, errors.code && styles.inputError]}
                     placeholder="Enter 6-digit code"
+                    placeholderTextColor="#aaa"
                     value={otpData.code}
                     onChangeText={(value) => handleOtpChange('code', value)}
                     keyboardType="numeric"
                     maxLength={6}
                     textAlign="center"
+                    inputMode="numeric"
                   />
                   {errors.code && <Text style={styles.errorText}>{errors.code}</Text>}
-                  <Text style={styles.codeHint}>Check your email for the verification code</Text>
+                  <Text style={styles.codeHint}>Enter the 6-digit code from your email</Text>
                 </View>
 
                 <TouchableOpacity style={styles.button} onPress={handleVerifyOTP} disabled={isLoading} activeOpacity={0.8}>
-                  <LinearGradient colors={isLoading ? ['#bbb', '#ccc'] : ['#34c759', '#28a745']} style={styles.buttonGradient}>
+                  <LinearGradient colors={isLoading ? ['#bbb', '#ccc'] : ['#E1306C', '#F56040']} style={styles.buttonGradient}>
                     <Text style={styles.buttonText}>{isLoading ? 'Verifying...' : 'Verify Account'}</Text>
                   </LinearGradient>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.backButton} onPress={() => setStep('register')}>
+                <TouchableOpacity style={styles.backButton} onPress={async () => {
+                  // Clear registration state when going back
+                  await Storage.removeItem('registration_step');
+                  await Storage.removeItem('registration_otp_data');
+                  await Storage.removeItem('registration_username');
+                  setIsStepLocked(false);
+                  setStep('register');
+                }}>
                   <Text style={styles.backButtonText}>← Back to Registration</Text>
                 </TouchableOpacity>
               </View>
             )}
 
-            {step === 'register' && (
-              <TouchableOpacity style={styles.linkButton} onPress={() => navigation.navigate('Login' as never)}>
-                <Text style={styles.linkText}>Already have an account? Sign in</Text>
-              </TouchableOpacity>
-            )}
+            <View style={styles.linkContainer}>
+              <Text style={styles.linkBaseText}>
+                {step === 'register' ? 'Already have an account? ' : 'Back to registration? '}
+              </Text>
+              {step === 'register' ? (
+                <TouchableOpacity onPress={async () => {
+                  // Clear registration state when navigating to login
+                  await Storage.removeItem('registration_step');
+                  await Storage.removeItem('registration_otp_data');
+                  await Storage.removeItem('registration_username');
+                  navigation.navigate('Login' as never);
+                }}>
+                  <Text style={styles.linkText}>Sign in</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={async () => {
+                  // Clear registration state when going back
+                  await Storage.removeItem('registration_step');
+                  await Storage.removeItem('registration_otp_data');
+                  await Storage.removeItem('registration_username');
+                  setIsStepLocked(false);
+                  setStep('register');
+                }}>
+                  <Text style={styles.linkText}>Go back</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -316,7 +483,8 @@ const styles = StyleSheet.create({
   codeHint: { color: '#666', fontSize: 14, textAlign: 'center', marginTop: 6 },
   backButton: { alignItems: 'center', marginTop: 15 },
   backButtonText: { color: '#007AFF', fontSize: 15, fontWeight: '500' },
-  linkButton: { alignItems: 'center', marginTop: 20 },
+  linkContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20 },
+  linkBaseText: { color: '#666', fontSize: 15 },
   linkText: { color: '#007AFF', fontSize: 15, fontWeight: '600' },
 });
 
