@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useAuth } from '@/context/AuthContext';
@@ -6,12 +6,11 @@ import { useAuth } from '@/context/AuthContext';
 // Auth Screens
 import LoginScreen from '@/screens/LoginScreen';
 import RegisterScreen from '@/screens/RegisterScreen';
-import Verify2FAScreen from '@/screens/Verify2FAScreen';
 import ForgotPasswordScreen from '@/screens/ForgotPasswordScreen';
 import ResetPasswordScreen from '@/screens/ResetPasswordScreen';
 import BiometricLockScreen from '@/screens/BiometricLockScreen';
 
-// Main App Screens
+// Main App Screens  
 import TabNavigator from './TabNavigator';
 import ProfileScreen from '@/screens/ProfileScreen';
 import SettingsScreen from '@/screens/SettingsScreen';
@@ -26,7 +25,7 @@ const AppNavigator: React.FC = () => {
   const { isAuthenticated, isLoading, isBiometricLocked } = useAuth();
 
   if (isLoading) {
-    // You can create a proper LoadingScreen component
+    // You can create a proper LoadingScreen component later
     return null;
   }
 
@@ -38,9 +37,16 @@ const AppNavigator: React.FC = () => {
             // Show biometric lock screen
             <Stack.Screen name="BiometricLock" component={BiometricLockScreen} />
           ) : (
-            // Main App
+            // Main App - matches web routing to /feed after login
             <>
-              <Stack.Screen name="Main" component={TabNavigator} />
+              <Stack.Screen 
+                name="Main" 
+                component={TabNavigator} 
+                options={{ 
+                  headerShown: false,
+                  animationTypeForReplace: 'push' // Better animation handling
+                }} 
+              />
               <Stack.Screen name="Profile" component={ProfileScreen} />
               <Stack.Screen name="Settings" component={SettingsScreen} />
               <Stack.Screen name="Followers" component={FollowersScreen} />
@@ -50,11 +56,17 @@ const AppNavigator: React.FC = () => {
             </>
           )
         ) : (
-          // Auth Screens
+          // Auth Screens - matches web auth flow
           <>
-            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen 
+              name="Login" 
+              component={LoginScreen} 
+              options={{ 
+                headerShown: false,
+                animationTypeForReplace: 'push' // Better animation handling
+              }} 
+            />
             <Stack.Screen name="Register" component={RegisterScreen} />
-            <Stack.Screen name="Verify2FA" component={Verify2FAScreen} />
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
             <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
           </>

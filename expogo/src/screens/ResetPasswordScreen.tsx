@@ -13,11 +13,18 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/context/AuthContext';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+
+interface RouteParams {
+  email?: string;
+}
 
 const ResetPasswordScreen: React.FC = () => {
+  const route = useRoute();
+  const { email: routeEmail } = (route.params as RouteParams) || {};
+  
   const [formData, setFormData] = useState({
-    email: '',
+    email: routeEmail || '',
     code: '',
     newPassword: '',
     confirmPassword: '',
@@ -31,7 +38,7 @@ const ResetPasswordScreen: React.FC = () => {
   // Redirect if already logged in
   useEffect(() => {
     if (isAuthenticated) {
-      navigation.navigate('Feed' as never);
+      navigation.navigate('Main' as never);
     }
   }, [isAuthenticated, navigation]);
 
@@ -88,7 +95,17 @@ const ResetPasswordScreen: React.FC = () => {
         ]
       );
     } else {
-      Alert.alert('Reset Failed', result.message || 'Failed to reset password');
+      if (result.details) {
+        const newErrors: Record<string, string> = {};
+        Object.entries(result.details).forEach(([field, messages]) => {
+          if (messages.length > 0) {
+            newErrors[field] = messages[0];
+          }
+        });
+        setErrors(newErrors);
+      } else {
+        Alert.alert('Reset Failed', result.message || 'Failed to reset password');
+      }
     }
     setIsLoading(false);
   };
