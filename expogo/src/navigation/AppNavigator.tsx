@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useAuth } from '@/context/AuthContext';
+import { Storage } from '@/utils/storage';
 
 // Auth Screens
 import LoginScreen from '@/screens/LoginScreen';
@@ -23,19 +24,43 @@ const Stack = createStackNavigator();
 
 const AppNavigator: React.FC = () => {
   const { isAuthenticated, isLoading, isBiometricLocked } = useAuth();
+  const [isRegistrationInProgress, setIsRegistrationInProgress] = useState(false);
 
-  // Debug logging
+  // Check for ongoing registration to maintain register screen
   useEffect(() => {
-    console.log('=== AppNavigator State ===');
-    console.log('isAuthenticated:', isAuthenticated);
-    console.log('isLoading:', isLoading);
-    console.log('isBiometricLocked:', isBiometricLocked);
-  }, [isAuthenticated, isLoading, isBiometricLocked]);
+    const checkRegistrationStatus = async () => {
+      try {
+        const savedStep = await Storage.getItem('registration_step');
+        const wasInProgress = isRegistrationInProgress;
+        const nowInProgress = savedStep === 'verify';
+        
+        if (wasInProgress !== nowInProgress) {
+          console.log('AppNavigator: Registration status changed:', { from: wasInProgress, to: nowInProgress });
+          setIsRegistrationInProgress(nowInProgress);
+        }
+      } catch (error) {
+        setIsRegistrationInProgress(false);
+      }
+    };
+    
+    // Check immediately
+    checkRegistrationStatus();
+    
+    // Check frequently during loading or when registration might be happening
+    const interval = setInterval(checkRegistrationStatus, 500); // Check every 500ms for responsiveness
+    return () => clearInterval(interval);
+  }, [isLoading, isRegistrationInProgress]);
 
   if (isLoading) {
-    console.log('AppNavigator: Showing loading state');
+    console.log('AppNavigator: Still loading, showing loading screen');
     return null;
   }
+
+  console.log('AppNavigator: Rendering with state:', {
+    isAuthenticated,
+    isBiometricLocked,
+    isRegistrationInProgress
+  });
 
   return (
     <NavigationContainer>
@@ -65,19 +90,36 @@ const AppNavigator: React.FC = () => {
           )
         ) : (
           // Auth Screens - matches web auth flow
-          <>
-            <Stack.Screen 
-              name="Login" 
-              component={LoginScreen} 
-              options={{ 
-                headerShown: false,
-                animationTypeForReplace: 'push' // Better animation handling
-              }} 
-            />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-            <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
-          </>
+          // If registration is in progress, show Register screen first to maintain OTP flow
+          isRegistrationInProgress ? (
+            <>
+              <Stack.Screen name="Register" component={RegisterScreen} />
+              <Stack.Screen 
+                name="Login" 
+                component={LoginScreen} 
+                options={{ 
+                  headerShown: false,
+                  animationTypeForReplace: 'push' // Better animation handling
+                }} 
+              />
+              <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+              <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+            </>
+          ) : (
+            <>
+              <Stack.Screen 
+                name="Login" 
+                component={LoginScreen} 
+                options={{ 
+                  headerShown: false,
+                  animationTypeForReplace: 'push' // Better animation handling
+                }} 
+              />
+              <Stack.Screen name="Register" component={RegisterScreen} />
+              <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+              <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+            </>
+          )
         )}
       </Stack.Navigator>
     </NavigationContainer>

@@ -120,6 +120,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       const response = await apiService.verifyOTP({ email, code });
+      
+      // Check if the response includes authentication tokens (user gets logged in after verification)
+      if (response.data.access && response.data.refresh && response.data.user) {
+        // User is logged in after verification
+        apiService.setTokens(response.data.access, response.data.refresh);
+        setUser(response.data.user);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+      }
+      
       return { success: true, message: response.data.detail };
     } catch (error) {
       const apiError = apiService.handleError(error);

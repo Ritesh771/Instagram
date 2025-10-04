@@ -97,7 +97,28 @@ class VerifyOTPView(APIView):
         user.is_verified = True
         user.save(update_fields=['is_verified'])
         OTP.objects.filter(user=user, purpose='register', is_used=False).update(is_used=True)
-        return Response({'detail': 'Account verified.'})
+        
+        # After successful registration verification, automatically log the user in
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
+        
+        return Response({
+            'detail': 'Account verified and logged in successfully.',
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'email': user.email,
+                'is_verified': user.is_verified,
+                'two_factor_enabled': user.two_factor_enabled,
+                'biometric_enabled': user.biometric_enabled,
+                'bio': user.bio,
+                'profile_pic': user.profile_pic.url if user.profile_pic else None,
+            }
+        })
 
 
 class LoginView(APIView):

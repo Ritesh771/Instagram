@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -24,17 +24,23 @@ interface PostCardProps {
 const { width } = Dimensions.get('window');
 
 const PostCard: React.FC<PostCardProps> = ({ post }) => {
-  const { deletePost } = usePosts();
+  const { deletePost, likePost, unlikePost } = usePosts();
   const { user } = useAuth();
   const navigation = useNavigation();
 
   const isOwner = user?.id === post.user.id;
 
-  const [isLiked, setIsLiked] = useState(post.is_liked);
-  const [likesCount, setLikesCount] = useState(post.likes_count);
+  // Use post data directly instead of local state to avoid stale data
+  const isLiked = post.is_liked;
+  const likesCount = post.likes_count;
 
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const lastTap = useRef<number | null>(null);
+
+  // Add debugging to track like states
+  useEffect(() => {
+    console.log(`PostCard ${post.id}: isLiked=${isLiked}, likesCount=${likesCount}, user=${user?.username}`);
+  }, [post.id, isLiked, likesCount, user?.username]);
 
   const triggerHeartAnimation = () => {
     scaleAnim.setValue(0);
@@ -56,23 +62,21 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
       Alert.alert('Login Required', 'Please log in to like posts');
       return;
     }
+
     try {
-      let response;
+      let result;
       if (isLiked) {
-        response = await apiService.unlikePost(post.id);
-        setIsLiked(false);
-        setLikesCount(response.data.likes_count);
+        result = await unlikePost(post.id);
       } else {
-        response = await apiService.likePost(post.id);
-        setIsLiked(true);
-        setLikesCount(response.data.likes_count);
+        result = await likePost(post.id);
       }
-    } catch (error: any) {
-      if (error.response?.data?.error === 'Already liked') {
-        setIsLiked(true);
-        return;
+      
+      if (!result.success) {
+        Alert.alert('Error', result.message || 'Failed to update like status');
       }
-      Alert.alert('Error', error.response?.data?.error || 'Failed to update like status');
+    } catch (error) {
+      console.log('PostCard: Error toggling like:', error);
+      Alert.alert('Error', 'Failed to update like status');
     }
   };
 
@@ -104,7 +108,8 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
   };
 
   const handleGoToProfile = () => {
-    navigation.navigate('Profile' as never, { userId: post.user.id } as never);
+    // navigation.navigate('Profile' as never, { userId: post.user.id } as never);
+    console.log('Navigate to profile:', post.user.username);
   };
 
   const formatTimestamp = (timestamp: string) => {
@@ -119,7 +124,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
 
   const getImageUrl = (imagePath: string) => {
     if (imagePath.startsWith('http')) return imagePath;
-    return `http://192.168.2.7:8000${imagePath}`;
+    return `http://192.168.2.8:8000${imagePath}`; // Use same IP as API service
   };
 
   return (
