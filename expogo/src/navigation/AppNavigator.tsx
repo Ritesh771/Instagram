@@ -8,7 +8,6 @@ import { Storage } from '@/utils/storage';
 import LoginScreen from '@/screens/LoginScreen';
 import RegisterScreen from '@/screens/RegisterScreen';
 import ForgotPasswordScreen from '@/screens/ForgotPasswordScreen';
-import ResetPasswordScreen from '@/screens/ResetPasswordScreen';
 import BiometricLockScreen from '@/screens/BiometricLockScreen';
 
 // Main App Screens  
@@ -51,11 +50,7 @@ const AppNavigator: React.FC = () => {
     return () => clearInterval(interval);
   }, [isLoading, isRegistrationInProgress]);
 
-  // Remove excessive logging
-  if (isLoading) {
-    return null;
-  }
-
+  // Instead of returning null during loading, let's keep the previous screen
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -99,7 +94,6 @@ const AppNavigator: React.FC = () => {
                 }} 
               />
               <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-              <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
             </>
           ) : (
             <>
@@ -113,7 +107,6 @@ const AppNavigator: React.FC = () => {
               />
               <Stack.Screen name="Register" component={RegisterScreen} />
               <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-              <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
             </>
           )
         )}
