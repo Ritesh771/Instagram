@@ -53,7 +53,7 @@ const API_URLS = {
   // For iOS Simulator
   IOS_SIMULATOR: 'http://localhost:8000/api',
   // For Physical Device (replace with your actual IP)
-  PHYSICAL_DEVICE: 'http://192.168.2.8:8000/api', // Update this IP!
+  PHYSICAL_DEVICE: 'http://192.168.2.5:8000/api', // Update this IP!
   // For development testing
   LOCALHOST: 'http://localhost:8000/api',
 };
@@ -186,11 +186,11 @@ class ApiService {
   }
 
   async requestPasswordReset(data: { email: string }): Promise<AxiosResponse<any>> {
-    return this.api.post('/auth/password-reset/', data);
+    return this.api.post('/auth/reset-password/', data);
   }
 
   async confirmPasswordReset(data: { email: string; code: string; new_password: string }): Promise<AxiosResponse<any>> {
-    return this.api.post('/auth/password-reset-confirm/', data);
+    return this.api.post('/auth/reset-password/confirm/', data);
   }
 
   async refreshAccessToken(refresh: string): Promise<AxiosResponse<{ access: string; refresh: string }>> {

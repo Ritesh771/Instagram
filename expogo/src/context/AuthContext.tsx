@@ -363,27 +363,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const requestPasswordReset = async (email: string) => {
     try {
-      setIsLoading(true);
       const response = await apiService.requestPasswordReset({ email });
       return { success: true, message: response.data.detail };
     } catch (error) {
       const apiError = apiService.handleError(error);
       return { success: false, message: apiError.message, details: apiError.details };
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const confirmPasswordReset = async (email: string, code: string, newPassword: string) => {
     try {
-      setIsLoading(true);
       const response = await apiService.confirmPasswordReset({ email, code, new_password: newPassword });
       return { success: true, message: response.data.detail };
     } catch (error) {
       const apiError = apiService.handleError(error);
       return { success: false, message: apiError.message, details: apiError.details };
-    } finally {
-      setIsLoading(false);
     }
   };
 
