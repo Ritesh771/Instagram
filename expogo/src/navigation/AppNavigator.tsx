@@ -19,6 +19,7 @@ import FollowingScreen from '@/screens/FollowingScreen';
 import PostViewScreen from '@/screens/PostViewScreen';
 import NotificationsScreen from '@/screens/NotificationsScreen';
 import SearchScreen from '@/screens/SearchScreen';
+import DevicesScreen from '@/screens/DevicesScreen';
 
 const Stack = createStackNavigator();
 
@@ -76,7 +77,7 @@ const AppNavigator: React.FC = () => {
               <Stack.Screen name="PostView" component={PostViewScreen} />
               <Stack.Screen name="Notifications" component={NotificationsScreen} />
               <Stack.Screen name="Search" component={SearchScreen} />
-
+              <Stack.Screen name="DevicesScreen" component={DevicesScreen}  options={{ headerShown: true, title: 'Logged-in Devices' }} />
             </>
           )
         ) : (

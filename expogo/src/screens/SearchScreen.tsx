@@ -65,6 +65,9 @@ const SearchScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerText}>Search User</Text>
+      </View>
       {/* Search Bar */}
       <View style={styles.searchBar}>
         <Ionicons name="search" size={20} color="#888" style={{ marginRight: 8 }} />
@@ -95,6 +98,8 @@ const SearchScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  header: { paddingVertical: 15, alignItems: 'center', borderBottomWidth: 0.5, borderBottomColor: '#ccc', marginBottom: 10 },
+  headerText: { fontSize: 22, fontWeight: 'bold', color: '#111' },
   container: { flex: 1, backgroundColor: '#fff',paddingTop: 60 },
   searchBar: {
     flexDirection: 'row',
