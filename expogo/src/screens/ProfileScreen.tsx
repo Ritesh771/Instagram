@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   View, Text, TouchableOpacity, StyleSheet, 
   TextInput, ScrollView, FlatList, Image, 
@@ -7,41 +7,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { usePosts } from '@/context/PostsContext';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { apiService, User } from '@/services/api';
+import { User } from '@/services/api';
 
-const numColumns = 3;
-const screenWidth = Dimensions.get('window').width;
-const imageSize = screenWidth / numColumns;
-
-// Define follower/following data structure based on FollowersScreen and FollowingScreen
-type FollowUser = {
-  id: number;
-  username: string;
-  full_name?: string;
-  avatar?: string;
-  first_name?: string;
-  last_name?: string;
-  isFollowing?: boolean;
-};
-
-// Define navigation parameter types
-type RootStackParamList = {
-  PostView: { posts: Post[]; initialIndex: number };
-  Followers: { followers: FollowUser[] };
-  Following: { following: FollowUser[] };
-  Settings: undefined;
-  Profile: { userId?: number };
-};
-
-type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Profile'>;
-
-type ProfileScreenRouteParams = {
-  userId?: number;
-};
-
+// Define the Post type
 type Post = {
   id: number;
   user: User;
@@ -52,81 +23,35 @@ type Post = {
   is_liked: boolean;
 };
 
-// Define user with additional properties for followers/following counts
-type UserProfile = User & {
-  followers_count?: number;
-  following_count?: number;
+// Define navigation parameter types
+type RootStackParamList = {
+  PostView: { posts: Post[]; initialIndex: number };
+  Followers: undefined;
+  Following: undefined;
+  Settings: undefined;
 };
 
+type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList, 'PostView'>;
+
+const numColumns = 3;
+const screenWidth = Dimensions.get('window').width;
+const imageSize = screenWidth / numColumns;
+
 const ProfileScreen: React.FC = () => {
-  const { user: currentUser, updateProfile } = useAuth();
+  const { user, updateProfile } = useAuth();
   const { posts } = usePosts();
   const navigation = useNavigation<ProfileScreenNavigationProp>();
-  const route = useRoute();
-  const { userId } = route.params as ProfileScreenRouteParams;
 
-  // State for the user whose profile is being viewed
-  const [profileUser, setProfileUser] = useState<UserProfile | null>(null);
-  const [loadingUser, setLoadingUser] = useState(false);
-  
+  const [activeTab, setActiveTab] = useState<'posts' | 'reels'>('posts');
   const [isEditingBio, setIsEditingBio] = useState(false);
-  const [editBio, setEditBio] = useState('');
+  const [editBio, setEditBio] = useState(user?.bio || '');
   const [isUpdating, setIsUpdating] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const scaleAnim = useState(new Animated.Value(0))[0];
-  
-  // Determine if we're viewing our own profile
-  const isOwnProfile = !userId || userId === currentUser?.id;
-  const userPosts = posts.filter(post => post.user.id === (isOwnProfile ? currentUser?.id : profileUser?.id));
-
-  // Fetch user data if viewing another user's profile
-  useEffect(() => {
-    const fetchUserProfile = async () => {
-      if (!userId || userId === currentUser?.id) {
-        // Viewing own profile
-        setProfileUser({
-          ...currentUser,
-          followers_count: 0, // In a real app, this would come from the API
-          following_count: 0  // In a real app, this would come from the API
-        } as UserProfile);
-        setEditBio(currentUser?.bio || '');
-        return;
-      }
-      
-      // Viewing another user's profile
-      setLoadingUser(true);
-      try {
-        const response = await apiService.getProfile();
-        // Note: We're using the existing getProfile API, but in a real app you would have
-        // a specific endpoint to get another user's profile by ID
-        setProfileUser({
-          ...response.data,
-          followers_count: 0, // In a real app, this would come from the API
-          following_count: 0  // In a real app, this would come from the API
-        });
-      } catch (error) {
-        console.log('Error fetching user profile:', error);
-        Alert.alert('Error', 'Failed to load user profile');
-        navigation.goBack();
-      } finally {
-        setLoadingUser(false);
-      }
-    };
-    
-    fetchUserProfile();
-  }, [userId, currentUser]);
-
-  // Update bio when profile user changes
-  useEffect(() => {
-    if (profileUser) {
-      setEditBio(profileUser.bio || '');
-    }
-  }, [profileUser]);
+  const userPosts = posts.filter(post => post.user.id === user?.id);
 
   const handleSaveBio = async () => {
-    if (!isOwnProfile) return;
-    
     if (!editBio.trim()) {
       Alert.alert('Error', 'Bio cannot be empty');
       return;
@@ -144,7 +69,7 @@ const ProfileScreen: React.FC = () => {
   };
 
   const handleCancelEdit = () => {
-    setEditBio(profileUser?.bio || '');
+    setEditBio(user?.bio || '');
     setIsEditingBio(false);
   };
 
@@ -172,13 +97,15 @@ const ProfileScreen: React.FC = () => {
     }).start(() => setSelectedPost(null));
   };
 
-  const renderPhoto = ({ item, index }: { item: Post; index: number }) => (
+  const renderPhoto = ({ item }: { item: Post }) => (
     <TouchableOpacity
       activeOpacity={0.9}
       onPress={() => {
+        // Navigate to post view with all user posts and the selected post index
+        const postIndex = userPosts.findIndex(p => p.id === item.id);
         navigation.navigate('PostView', { 
           posts: userPosts, 
-          initialIndex: index 
+          initialIndex: postIndex 
         });
       }}
       onLongPress={() => handleLongPress(item)}
@@ -188,40 +115,18 @@ const ProfileScreen: React.FC = () => {
     </TouchableOpacity>
   );
 
-  // Show loading state
-  if (loadingUser) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text>Loading profile...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // If no profile user, show nothing
-  if (!profileUser) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text>User not found</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
         {/* Top Profile Section */}
         <View style={styles.topSection}>
-          <View style={styles.userInfo}>
+          <View style={styles.userInfoContainer}>
             <LinearGradient
               colors={["#f09433", "#e6683c", "#dc2743", "#cc2366", "#bc1888"]}
               style={styles.avatar}
             >
               <Text style={styles.avatarText}>
-                {profileUser?.first_name?.[0]}{profileUser?.last_name?.[0]}
+                {user?.first_name?.[0]}{user?.last_name?.[0]}
               </Text>
             </LinearGradient>
           </View>
@@ -231,9 +136,9 @@ const ProfileScreen: React.FC = () => {
               style={styles.stat}
               onPress={() => {
                 if (userPosts.length > 0) {
-                  navigation.navigate('PostView', {
-                    posts: userPosts,
-                    initialIndex: 0,
+                  navigation.navigate('PostView', { 
+                    posts: userPosts, 
+                    initialIndex: 0 
                   });
                 }
               }}
@@ -244,19 +149,19 @@ const ProfileScreen: React.FC = () => {
             <TouchableOpacity
               style={styles.stat}
               onPress={() =>
-                navigation.navigate('Followers', { followers: [] })
+                navigation.navigate('Followers')
               }
             >
-              <Text style={styles.statNumber}>{profileUser?.followers_count || 0}</Text>
+              <Text style={styles.statNumber}>0</Text>
               <Text style={styles.statLabel}>Followers</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.stat}
               onPress={() =>
-                navigation.navigate('Following', { following: [] })
+                navigation.navigate('Following')
               }
             >
-              <Text style={styles.statNumber}>{profileUser?.following_count || 0}</Text>
+              <Text style={styles.statNumber}>0</Text>
               <Text style={styles.statLabel}>Following</Text>
             </TouchableOpacity>
           </View>
@@ -264,8 +169,8 @@ const ProfileScreen: React.FC = () => {
 
         {/* Username & Bio */}
         <View style={styles.bioSection}>
-          <Text style={styles.usernameText}>{profileUser?.username}</Text>
-          {isOwnProfile && isEditingBio ? (
+          <Text style={styles.usernameText}>{user?.username}</Text>
+          {isEditingBio ? (
             <View>
               <TextInput
                 style={styles.bioInput}
@@ -283,37 +188,35 @@ const ProfileScreen: React.FC = () => {
               </View>
             </View>
           ) : (
-            <Text style={styles.bioText}>{profileUser?.bio || ''}</Text>
+            <Text style={styles.bioText}>{user?.bio || ''}</Text>
           )}
         </View>
 
-        {/* Edit Profile + Settings - only for own profile */}
-        {isOwnProfile && (
-          <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.editProfileButton} onPress={() => setIsEditingBio(true)}>
-              <Text>Edit Profile</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>
-              <Text>Settings</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        {/* Edit Profile + Settings */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity style={styles.editProfileButton} onPress={() => setIsEditingBio(true)}>
+            <Text>Edit Profile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>
+            <Text>Settings</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Tabs */}
         <View style={styles.tabsRow}>
-          <TouchableOpacity style={styles.tabButton}>
-            <Text style={[styles.tabText, styles.activeTab]}>Posts</Text>
+          <TouchableOpacity style={styles.tabButton} onPress={() => setActiveTab('posts')}>
+            <Text style={[styles.tabText, activeTab === 'posts' && styles.activeTab]}>Posts</Text>
           </TouchableOpacity>
         </View>
 
         {/* Posts Grid */}
-        <FlatList
-          data={userPosts}
-          renderItem={renderPhoto}
-          keyExtractor={(item) => item.id.toString()}
-          numColumns={numColumns}
-          scrollEnabled={false}
-        />
+          <FlatList
+            data={userPosts}
+            renderItem={renderPhoto}
+            keyExtractor={(item) => item.id.toString()}
+            numColumns={numColumns}
+            scrollEnabled={false}
+          />
       </ScrollView>
 
       {/* Modal for Long Press Preview */}
@@ -336,9 +239,8 @@ const ProfileScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   topSection: { flexDirection: 'row', padding: 15, alignItems: 'center' },
-  userInfo: { flexDirection: 'row', alignItems: 'center' },
+  userInfoContainer: { flexDirection: 'row', alignItems: 'center' },
   avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#007AFF', justifyContent: 'center', alignItems: 'center' },
   avatarText: { color: '#fff', fontSize: 36, fontWeight: 'bold' },
   statsRow: { flex: 1, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
