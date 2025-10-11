@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Switch, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
+import { useNavigation } from '@react-navigation/native';
 
 const SettingsScreen: React.FC = () => {
   const { user, logout, updateProfile, enableBiometricLogin, disableBiometricLogin, isBiometricAvailable } = useAuth();
   const [isUpdating, setIsUpdating] = useState(false);
   const [isBiometricUpdating, setIsBiometricUpdating] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const navigation = useNavigation();
 
   useEffect(() => {
     checkBiometricAvailability();
@@ -107,6 +109,20 @@ const SettingsScreen: React.FC = () => {
             />
           </View>
         </View>
+
+        {/* Logged-in Devices */}
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => navigation.navigate('DevicesScreen')}
+        >
+          <View style={styles.cardRow}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={styles.cardTitle}>Logged-in Devices</Text>
+              <Text style={styles.cardSubtitle}>Manage where you’re logged in</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+
 
         {/* Logout Button */}
         <TouchableOpacity style={styles.card} onPress={handleLogout}>
