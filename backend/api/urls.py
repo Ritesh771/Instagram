@@ -24,6 +24,7 @@ from .views import (
     RejectFollowRequestView,
     FollowUserView,
     UnfollowUserView,
+    DeviceListView, LogoutDeviceView, LogoutAllDevicesView,  # Device management views
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -59,5 +60,9 @@ urlpatterns = [
     path('follow-requests/pending/', PendingFollowRequestsView.as_view(), name='pending-requests'),
     path('follow-requests/accept/<int:requester_id>/', AcceptFollowRequestView.as_view(), name='accept-request'),
     path('follow-requests/reject/<int:requester_id>/', RejectFollowRequestView.as_view(), name='reject-request'),
+    #device management
+    path('devices/', DeviceListView.as_view(), name='device-list'),
+    path('devices/<int:device_id>/logout/', LogoutDeviceView.as_view(), name='logout-device'),
+    path('devices/logout-all/', LogoutAllDevicesView.as_view(), name='logout-all-devices'),
 ]
 

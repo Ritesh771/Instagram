@@ -1,6 +1,9 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
+from datetime import timedelta
+import uuid
+
 
 
 class User(AbstractUser):
@@ -13,6 +16,7 @@ class User(AbstractUser):
     bio = models.TextField(blank=True, null=True)
     profile_pic = models.ImageField(upload_to='profiles/', blank=True, null=True)
     is_private = models.BooleanField(default=True)
+   
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['email']
@@ -111,3 +115,26 @@ class FollowRequest(models.Model):
 
     def __str__(self) -> str:
         return f"{self.requester.username} requested to follow {self.recipient.username}"
+
+
+class UserDevice(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='devices')
+    session_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)  # Unique per login
+    device_name = models.CharField(max_length=255)  # e.g., "Windows Chrome"
+    os = models.CharField(max_length=100)  # e.g., "Windows"
+    browser = models.CharField(max_length=100)  # e.g., "Chrome"
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    login_time = models.DateTimeField(default=timezone.now)
+    last_activity = models.DateTimeField(default=timezone.now)
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        ordering = ['-login_time']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.device_name} ({self.login_time})"
+
+    def touch(self):
+        """Update last activity."""
+        self.last_activity = timezone.now()
+        self.save(update_fields=['last_activity'])

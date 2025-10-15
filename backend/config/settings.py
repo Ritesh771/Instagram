@@ -49,7 +49,10 @@ INSTALLED_APPS = [
     'corsheaders',
     # Local
     'api',
+    'user_agents',  # For device detection
 ]
+
+INSTALLED_APPS += ['rest_framework_simplejwt.token_blacklist']
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -60,6 +63,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django_user_agents.middleware.UserAgentMiddleware',
+    'django_user_agents.middleware.UserAgentMiddleware',  # Add after SessionMiddleware
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -152,6 +157,8 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
 }
 
 # CORS - Development settings (allow everything)

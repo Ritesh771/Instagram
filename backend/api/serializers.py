@@ -7,7 +7,16 @@ from django.contrib.auth import get_user_model
 
 from rest_framework import serializers
 
-from .models import User, Post, OTP, Like, Follow, FollowRequest
+from .models import User, Post, OTP, Like, Follow, FollowRequest, User, UserDevice
+
+
+class DeviceSerializer(serializers.ModelSerializer):
+    login_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    last_activity = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+
+    class Meta:
+        model = UserDevice
+        fields = ['id', 'device_name', 'os', 'browser', 'ip_address', 'login_time', 'last_activity']
 
 
 class RegisterSerializer(serializers.ModelSerializer):

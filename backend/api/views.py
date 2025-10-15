@@ -17,6 +17,8 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework.permissions import IsAuthenticated
+
 
 from .models import User, Post, OTP, Like, Follow, FollowRequest
 from .serializers import (
@@ -26,7 +28,9 @@ from .serializers import (
     ResetPasswordConfirmSerializer,
     PostSerializer,
     UserSerializer,
+    DeviceSerializer,
 )
+from user_agents import parse
 
 
 def generate_otp_code() -> str:
@@ -181,6 +185,34 @@ class LoginView(APIView):
         # No 2FA - return JWT tokens directly
         from rest_framework_simplejwt.tokens import RefreshToken
         refresh = RefreshToken.for_user(user)
+
+        # Detect device info for logout sessions mechanism
+        ua_string = request.META.get('HTTP_USER_AGENT', '')
+        user_agent = parse(ua_string)
+        device_name = f"{user_agent.os.family} {user_agent.browser.family}"
+        os_name = user_agent.os.family
+        browser_name = user_agent.browser.family
+        ip = request.META.get('REMOTE_ADDR')  # Or use request.ip for better IP
+        
+        # Create or update device session
+        session_token = str(uuid.uuid4())
+        device, created = UserDevice.objects.update_or_create(
+            user=user,
+            session_token=session_token,
+            defaults={
+                'device_name': device_name,
+                'os': os_name,
+                'browser': browser_name,
+                'ip_address': ip,
+                'login_time': timezone.now(),
+                'last_activity': timezone.now(),
+                'is_active': True,
+            }
+        )
+        
+        if not created:
+            device.touch()
+
         return Response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
@@ -194,6 +226,12 @@ class LoginView(APIView):
                 'two_factor_enabled': user.two_factor_enabled,
                 'bio': user.bio,
                 'profile_pic': user.profile_pic.url if user.profile_pic else None,
+            },
+            #response for device sessions
+            'device': {
+                'id': device.id,
+                'device_name': device.device_name,
+                'login_time': device.login_time.isoformat(),
             }
         })
 
@@ -369,6 +407,7 @@ class LikePostView(APIView):
             return Response({'liked': False, 'likes_count': post.likes_count})
         except Like.DoesNotExist:
             return Response({'error': 'Not liked'}, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class UsernamePreviewView(APIView):
@@ -798,3 +837,55 @@ class RejectFollowRequestView(APIView):
             return Response({'detail': 'Follow request rejected'})
         
         return Response({'error': 'No follow request found'}, status=status.HTTP_404_NOT_FOUND)
+
+# Device Sessions and Logout Views
+class DeviceListView(generics.ListAPIView):
+    serializer_class = DeviceSerializer  # Define below
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return self.request.user.devices.filter(is_active=True).order_by('-login_time')
+
+class LogoutDeviceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, device_id):
+        try:
+            device = UserDevice.objects.get(id=device_id, user=request.user, is_active=True)
+        except UserDevice.DoesNotExist:
+            return Response({'error': 'Device not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Blacklist associated refresh tokens (if linked; assume client sends refresh_token for the device)
+        refresh_token = request.data.get('refresh_token')
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                jti = OutstandingToken.objects.get(token=token).jti
+                BlacklistedToken.objects.create(token=jti)
+            except Exception:
+                pass  # Ignore if invalid
+        
+        device.is_active = False
+        device.save(update_fields=['is_active'])
+        return Response({'detail': 'Device logged out successfully'}, status=status.HTTP_200_OK)
+
+
+class LogoutAllDevicesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # Blacklist all outstanding refresh tokens for the user
+        outstanding_tokens = OutstandingToken.objects.filter(user=request.user)
+        for token in outstanding_tokens:
+            BlacklistedToken.objects.get_or_create(token=token.jti)
+        
+        # Deactivate all devices except current (exclude by session_token if provided)
+        current_session = request.data.get('current_session_token')
+        UserDevice.objects.filter(user=request.user, is_active=True).exclude(
+            session_token=current_session
+        ).update(is_active=False)
+        
+        return Response({'detail': 'Logged out from all other devices'}, status=status.HTTP_200_OK)
+
+
+
