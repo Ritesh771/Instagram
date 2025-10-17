@@ -1,15 +1,14 @@
+
 from datetime import timedelta
 import random
 import json
 import base64
 import hashlib
 import secrets
-
 from django.utils import timezone
 from django.core.mail import send_mail
 from django.contrib.auth import authenticate
 from django.db import transaction
-
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -17,6 +16,7 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework.permissions import IsAuthenticated
 
 from .models import User, Post, OTP, Like, Follow, FollowRequest
 from .serializers import (
@@ -26,22 +26,20 @@ from .serializers import (
     ResetPasswordConfirmSerializer,
     PostSerializer,
     UserSerializer,
+    DeviceSerializer,
 )
-
+from user_agents import parse
 
 def generate_otp_code() -> str:
     return f"{random.randint(100000, 999999)}"
 
-
 class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
-
     @transaction.atomic
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user: User = serializer.save()
-
         code = generate_otp_code()
         otp = OTP.objects.create(
             user=user,
@@ -49,9 +47,7 @@ class RegisterView(APIView):
             purpose='register',
             expires_at=timezone.now() + timedelta(minutes=10),
         )
-
         print(f"OTP for {user.email}: {code}")  # Development debugging
-
         try:
             html_message = f"""
                 <html>
@@ -80,16 +76,13 @@ class RegisterView(APIView):
         except Exception as e:
             print(f"Failed to send verification email to {user.email}: {e}")
             # Continue with registration even if email fails
-
         return Response({
             'detail': 'Registered. Check email for OTP.',
             'username': user.username
         }, status=status.HTTP_201_CREATED)
 
-
 class VerifyOTPView(APIView):
     permission_classes = [permissions.AllowAny]
-
     def post(self, request):
         serializer = VerifyOTPSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -120,10 +113,8 @@ class VerifyOTPView(APIView):
             }
         })
 
-
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
-
     def post(self, request):
         username = request.data.get('username')
         password = request.data.get('password')
@@ -181,6 +172,32 @@ class LoginView(APIView):
         # No 2FA - return JWT tokens directly
         from rest_framework_simplejwt.tokens import RefreshToken
         refresh = RefreshToken.for_user(user)
+        # Detect device info for logout sessions mechanism
+        ua_string = request.META.get('HTTP_USER_AGENT', '')
+        user_agent = parse(ua_string)
+        device_name = f"{user_agent.os.family} {user_agent.browser.family}"
+        os_name = user_agent.os.family
+        browser_name = user_agent.browser.family
+        ip = request.META.get('REMOTE_ADDR')  # Or use request.ip for better IP
+        
+        # Create or update device session
+        session_token = str(uuid.uuid4())
+        device, created = UserDevice.objects.update_or_create(
+            user=user,
+            session_token=session_token,
+            defaults={
+                'device_name': device_name,
+                'os': os_name,
+                'browser': browser_name,
+                'ip_address': ip,
+                'login_time': timezone.now(),
+                'last_activity': timezone.now(),
+                'is_active': True,
+            }
+        )
+        
+        if not created:
+            device.touch()
         return Response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
@@ -194,13 +211,17 @@ class LoginView(APIView):
                 'two_factor_enabled': user.two_factor_enabled,
                 'bio': user.bio,
                 'profile_pic': user.profile_pic.url if user.profile_pic else None,
+            },
+            #response for device sessions
+            'device': {
+                'id': device.id,
+                'device_name': device.device_name,
+                'login_time': device.login_time.isoformat(),
             }
         })
 
-
 class Verify2FAView(APIView):
     permission_classes = [permissions.AllowAny]
-
     def post(self, request):
         username = request.data.get('username')
         code = request.data.get('code')
@@ -247,10 +268,8 @@ class Verify2FAView(APIView):
             }
         })
 
-
 class ResetPasswordRequestView(APIView):
     permission_classes = [permissions.AllowAny]
-
     def post(self, request):
         serializer = ResetPasswordRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -293,10 +312,8 @@ class ResetPasswordRequestView(APIView):
             return Response({'error': 'Failed to send reset email'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response({'detail': 'Reset OTP sent.'})
 
-
 class ResetPasswordConfirmView(APIView):
     permission_classes = [permissions.AllowAny]
-
     def post(self, request):
         serializer = ResetPasswordConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -307,36 +324,29 @@ class ResetPasswordConfirmView(APIView):
         OTP.objects.filter(user=user, purpose='reset', is_used=False).update(is_used=True)
         return Response({'detail': 'Password reset successful.'})
 
-
 class PostListCreateView(generics.ListCreateAPIView):
     queryset = Post.objects.select_related('user').all()
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     parser_classes = [MultiPartParser, FormParser]
-
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
-
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context['request'] = self.request
         return context
 
-
 class PostDeleteView(generics.DestroyAPIView):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
-
     def perform_destroy(self, instance):
         if instance.user != self.request.user:
             raise PermissionDenied('Not allowed to delete this post.')
         super().perform_destroy(instance)
 
-
 class LikePostView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def post(self, request, post_id):
         """Like a post"""
         try:
@@ -352,7 +362,6 @@ class LikePostView(APIView):
             return Response({'liked': True, 'likes_count': post.likes_count})
         else:
             return Response({'error': 'Already liked'}, status=status.HTTP_400_BAD_REQUEST)
-
     def delete(self, request, post_id):
         """Unlike a post"""
         try:
@@ -373,7 +382,6 @@ class LikePostView(APIView):
 
 class UsernamePreviewView(APIView):
     permission_classes = [permissions.AllowAny]
-
     def post(self, request):
         first_name = request.data.get('first_name', '').strip()
         last_name = request.data.get('last_name', '').strip()
@@ -403,15 +411,12 @@ class UsernamePreviewView(APIView):
         
         return Response({'username': username})
 
-
 class ProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def get(self, request):
         """Get current user's profile"""
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
-
     def patch(self, request):
         """Update current user's profile"""
         # Allow updating bio, two_factor_enabled, and biometric_enabled
@@ -423,7 +428,6 @@ class ProfileView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 # Simplified Biometric Authentication Views (WebAuthn implementation)
 import secrets
@@ -439,27 +443,22 @@ class BiometricChallengeView(APIView):
             if action == 'authenticate':
                 return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
-
     def post(self, request):
         """Generate a challenge for biometric registration/authentication"""
         action = request.data.get('action')
         if action not in ['register', 'authenticate']:
             return Response({'error': 'Invalid action'}, status=status.HTTP_400_BAD_REQUEST)
-
         # Generate a cryptographic challenge
         challenge = secrets.token_bytes(32)
         challenge_b64 = base64.b64encode(challenge).decode('utf-8')
-
         if action == 'register':
             # For registration, user must be authenticated
             if not request.user.is_authenticated:
                 return Response({'error': 'Authentication required for registration'}, status=status.HTTP_401_UNAUTHORIZED)
-
             # Store challenge in user model for verification
             request.user.biometric_challenge = challenge_b64
             request.user.biometric_action = action
             request.user.save(update_fields=['biometric_challenge', 'biometric_action'])
-
             # Create challenge response for registration
             challenge_data = {
                 'challenge': challenge_b64,
@@ -485,29 +484,24 @@ class BiometricChallengeView(APIView):
             username = request.data.get('username')
             if not username:
                 return Response({'error': 'Username required for biometric authentication'}, status=status.HTTP_400_BAD_REQUEST)
-
             try:
                 from django.contrib.auth import get_user_model
                 User = get_user_model()
                 user = User.objects.get(username=username)
             except User.DoesNotExist:
                 return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
             # Check if user has biometric enabled
             if not user.biometric_enabled:
                 return Response({'error': 'Biometric login not enabled for this user'}, status=status.HTTP_400_BAD_REQUEST)
-
             # Store challenge temporarily (we'll verify it during authentication)
             user.biometric_challenge = challenge_b64
             user.biometric_action = action
             user.save(update_fields=['biometric_challenge', 'biometric_action'])
-
             # Get user's biometric credentials
             from .models import BiometricCredential
             credentials = BiometricCredential.objects.filter(user=user)
             if not credentials.exists():
                 return Response({'error': 'No biometric credentials registered'}, status=status.HTTP_400_BAD_REQUEST)
-
             # Create challenge response for authentication
             challenge_data = {
                 'challenge': challenge_b64,
@@ -520,30 +514,23 @@ class BiometricChallengeView(APIView):
                 ],
                 'timeout': 60000
             }
-
         return Response(challenge_data)
-
 
 class BiometricRegisterView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def post(self, request):
         """Register biometric authentication (WebAuthn)"""
         try:
             credential_data = request.data.get('credential')
             if not credential_data:
                 return Response({'error': 'Credential data required'}, status=status.HTTP_400_BAD_REQUEST)
-
             # Parse the credential response
             credential = json.loads(credential_data)
-
             # Verify the credential ID and public key
             credential_id_b64url = credential.get('id')
             public_key = credential.get('publicKey')
-
             if not credential_id_b64url or not public_key:
                 return Response({'error': 'Invalid credential data'}, status=status.HTTP_400_BAD_REQUEST)
-
             # Convert base64url to base64 for storage
             # Add padding if needed
             missing_padding = len(credential_id_b64url) % 4
@@ -553,7 +540,6 @@ class BiometricRegisterView(APIView):
             # Convert from base64url to bytes, then to base64
             credential_id_bytes = base64.urlsafe_b64decode(credential_id_b64url)
             credential_id_b64 = base64.b64encode(credential_id_bytes).decode('utf-8')
-
             # Store the credential
             from .models import BiometricCredential
             BiometricCredential.objects.create(
@@ -561,43 +547,34 @@ class BiometricRegisterView(APIView):
                 credential_id=credential_id_b64,
                 public_key=json.dumps(public_key)
             )
-
             # Enable biometric login for the user
             request.user.biometric_enabled = True
             request.user.save(update_fields=['biometric_enabled'])
-
             return Response({'detail': 'Biometric authentication registered successfully'})
-
         except Exception as e:
             print(f"Biometric registration error: {e}")
             return Response({'error': 'Failed to register biometric credential'}, status=status.HTTP_400_BAD_REQUEST)
 
-
 class BiometricAuthenticateView(APIView):
     permission_classes = [permissions.AllowAny]
-
     def post(self, request):
         """Authenticate using biometric (WebAuthn)"""
         try:
             credential_data = request.data.get('credential')
             if not credential_data:
                 return Response({'error': 'Credential data required'}, status=status.HTTP_400_BAD_REQUEST)
-
             # Parse the credential response
             credential = json.loads(credential_data)
-
             # Get the credential ID
             credential_id = credential.get('id')
             if not credential_id:
                 return Response({'error': 'Invalid credential data'}, status=status.HTTP_400_BAD_REQUEST)
-
             # Convert base64url to standard base64 for database lookup
             missing_padding = len(credential_id) % 4
             if missing_padding:
                 credential_id += '=' * (4 - missing_padding)
             credential_id_bytes = base64.urlsafe_b64decode(credential_id)
             credential_id_b64 = base64.b64encode(credential_id_bytes).decode('utf-8')
-
             # Find the user by credential
             from .models import BiometricCredential
             try:
@@ -605,15 +582,12 @@ class BiometricAuthenticateView(APIView):
                 user = bio_cred.user
             except BiometricCredential.DoesNotExist:
                 return Response({'error': 'Biometric credential not found'}, status=status.HTTP_400_BAD_REQUEST)
-
             # Verify user has biometric enabled
             if not user.biometric_enabled:
                 return Response({'error': 'Biometric login not enabled for this user'}, status=status.HTTP_400_BAD_REQUEST)
-
             # Update last used timestamp
             bio_cred.last_used_at = timezone.now()
             bio_cred.save(update_fields=['last_used_at'])
-
             # Return JWT tokens
             from rest_framework_simplejwt.tokens import RefreshToken
             refresh = RefreshToken.for_user(user)
@@ -633,16 +607,13 @@ class BiometricAuthenticateView(APIView):
                     'profile_pic': user.profile_pic.url if user.profile_pic else None,
                 }
             })
-
         except Exception as e:
             print(f"Biometric authentication error: {e}")
             return Response({'error': 'Biometric authentication failed'}, status=status.HTTP_400_BAD_REQUEST)
 
-
 # Follow System Views
 class FollowUserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def post(self, request, user_id):
         try:
             to_follow = User.objects.get(id=user_id)
@@ -665,10 +636,8 @@ class FollowUserView(APIView):
             Follow.objects.create(follower=request.user, followed=to_follow)
             return Response({'followed': True}, status=status.HTTP_200_OK)
 
-
 class UnfollowUserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def post(self, request, user_id):
         try:
             target = User.objects.get(id=user_id)
@@ -687,11 +656,9 @@ class UnfollowUserView(APIView):
         
         return Response({'error': 'Not following or requested'}, status=status.HTTP_400_BAD_REQUEST)
 
-
 class FollowersListView(generics.ListAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.AllowAny]
-
     def get_queryset(self):
         user_id = self.kwargs['user_id']
         try:
@@ -706,11 +673,9 @@ class FollowersListView(generics.ListAPIView):
         follower_ids = Follow.objects.filter(followed_id=user_id).values_list('follower_id', flat=True)
         return User.objects.filter(id__in=follower_ids)
 
-
 class FollowingListView(generics.ListAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.AllowAny]
-
     def get_queryset(self):
         user_id = self.kwargs['user_id']
         try:
@@ -725,11 +690,9 @@ class FollowingListView(generics.ListAPIView):
         following_ids = Follow.objects.filter(follower_id=user_id).values_list('followed_id', flat=True)
         return User.objects.filter(id__in=following_ids)
 
-
 class UserPostsListView(generics.ListAPIView):
     serializer_class = PostSerializer
     permission_classes = [permissions.AllowAny]
-
     def get_queryset(self):
         user_id = self.kwargs['user_id']
         try:
@@ -743,31 +706,25 @@ class UserPostsListView(generics.ListAPIView):
         
         return Post.objects.filter(user_id=user_id).select_related('user').order_by('-created_at')
 
-
 class UserDetailView(generics.RetrieveAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.AllowAny]
-
     def get(self, request, *args, **kwargs):
         user = self.get_object()
         if user.is_private and not Follow.objects.filter(follower=request.user, followed=user).exists() and user != request.user:
             return Response({'detail': 'This account is private'}, status=status.HTTP_403_FORBIDDEN)
         return super().get(request, *args, **kwargs)
 
-
 class PendingFollowRequestsView(generics.ListAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
-
     def get_queryset(self):
         requester_ids = FollowRequest.objects.filter(recipient=self.request.user).values_list('requester_id', flat=True)
         return User.objects.filter(id__in=requester_ids)
 
-
 class AcceptFollowRequestView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def post(self, request, requester_id):
         try:
             requester = User.objects.get(id=requester_id)
@@ -782,10 +739,8 @@ class AcceptFollowRequestView(APIView):
         req.delete()
         return Response({'detail': 'Follow request accepted'})
 
-
 class RejectFollowRequestView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def post(self, request, requester_id):
         try:
             requester = User.objects.get(id=requester_id)
@@ -798,3 +753,46 @@ class RejectFollowRequestView(APIView):
             return Response({'detail': 'Follow request rejected'})
         
         return Response({'error': 'No follow request found'}, status=status.HTTP_404_NOT_FOUND)
+# Device Sessions and Logout Views
+class DeviceListView(generics.ListAPIView):
+    serializer_class = DeviceSerializer  # Define below
+    permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        return self.request.user.devices.filter(is_active=True).order_by('-login_time')
+class LogoutDeviceView(APIView):
+    permission_classes = [IsAuthenticated]
+    def delete(self, request, device_id):
+        try:
+            device = UserDevice.objects.get(id=device_id, user=request.user, is_active=True)
+        except UserDevice.DoesNotExist:
+            return Response({'error': 'Device not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Blacklist associated refresh tokens (if linked; assume client sends refresh_token for the device)
+        refresh_token = request.data.get('refresh_token')
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                jti = OutstandingToken.objects.get(token=token).jti
+                BlacklistedToken.objects.create(token=jti)
+            except Exception:
+                pass  # Ignore if invalid
+        
+        device.is_active = False
+        device.save(update_fields=['is_active'])
+        return Response({'detail': 'Device logged out successfully'}, status=status.HTTP_200_OK)
+
+class LogoutAllDevicesView(APIView):
+    permission_classes = [IsAuthenticated]
+    def post(self, request):
+        # Blacklist all outstanding refresh tokens for the user
+        outstanding_tokens = OutstandingToken.objects.filter(user=request.user)
+        for token in outstanding_tokens:
+            BlacklistedToken.objects.get_or_create(token=token.jti)
+        
+        # Deactivate all devices except current (exclude by session_token if provided)
+        current_session = request.data.get('current_session_token')
+        UserDevice.objects.filter(user=request.user, is_active=True).exclude(
+            session_token=current_session
+        ).update(is_active=False)
+        
+        return Response({'detail': 'Logged out from all other devices'}, status=status.HTTP_200_OK)

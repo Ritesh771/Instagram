@@ -1,24 +1,26 @@
-from datetime import timedelta
 
+from datetime import timedelta
 from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
-
 from rest_framework import serializers
+from .models import User, Post, OTP, Like, Follow, FollowRequest, User, UserDevice
 
-from .models import User, Post, OTP, Like, Follow, FollowRequest
-
+class DeviceSerializer(serializers.ModelSerializer):
+    login_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    last_activity = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    class Meta:
+        model = UserDevice
+        fields = ['id', 'device_name', 'os', 'browser', 'ip_address', 'login_time', 'last_activity']
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     first_name = serializers.CharField(required=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
-
     class Meta:
         model = User
         fields = ['first_name', 'last_name', 'email', 'password']
-
     def create(self, validated_data):
         first_name = validated_data.pop('first_name')
         last_name = validated_data.pop('last_name', '')
@@ -54,11 +56,9 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.save()
         return user
 
-
 class VerifyOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()
     code = serializers.CharField(max_length=6)
-
     def validate(self, attrs):
         email = attrs['email']
         code = attrs['code']
@@ -73,10 +73,8 @@ class VerifyOTPSerializer(serializers.Serializer):
         attrs['user'] = user
         return attrs
 
-
 class ResetPasswordRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
-
     def validate(self, attrs):
         email = attrs['email']
         try:
@@ -86,12 +84,10 @@ class ResetPasswordRequestSerializer(serializers.Serializer):
         attrs['user'] = user
         return attrs
 
-
 class ResetPasswordConfirmSerializer(serializers.Serializer):
     email = serializers.EmailField()
     code = serializers.CharField(max_length=6)
     new_password = serializers.CharField(write_only=True)
-
     def validate(self, attrs):
         email = attrs['email']
         code = attrs['code']
@@ -111,32 +107,26 @@ class ResetPasswordConfirmSerializer(serializers.Serializer):
         attrs['user'] = user
         return attrs
 
-
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_verified', 'two_factor_enabled', 'bio', 'profile_pic', 'biometric_enabled']
         read_only_fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_verified']
 
-
 class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     is_liked = serializers.SerializerMethodField()
     likes_count = serializers.ReadOnlyField()
-
     class Meta:
         model = Post
         fields = ['id', 'user', 'image', 'caption', 'created_at', 'likes_count', 'is_liked']
-
     def get_is_liked(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return obj.likes.filter(user=request.user).exists()
         return False
-
 class FollowRequestSerializer(serializers.ModelSerializer):
     requester = UserSerializer(read_only=True)
-
     class Meta:
         model = FollowRequest
         fields = ['id', 'requester', 'created_at']
