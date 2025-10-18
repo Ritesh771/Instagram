@@ -114,3 +114,40 @@ class UserDevice(models.Model):
         """Update last activity."""
         self.last_activity = timezone.now()
         self.save(update_fields=['last_activity'])
+
+
+class Comment(models.Model):
+    user = models.ForeignKey('api.User', on_delete=models.CASCADE, related_name='comments')
+    post = models.ForeignKey('api.Post', on_delete=models.CASCADE, related_name='comments')
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        
+    def __str__(self):
+        return f"Comment by {self.user.username} on Post({self.post.id})"
+
+
+class Notification(models.Model):
+    NOTIFICATION_TYPES = (
+        ('follow_request', 'Follow Request'),
+        ('follow_accept', 'Follow Accept'),
+        ('like', 'Like'),
+        ('comment', 'Comment'),
+        ('mention', 'Mention'),
+    )
+    
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    actor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='actions')
+    notification_type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    
+    class Meta:
+        ordering = ['-created_at']
+        
+    def __str__(self):
+        return f"Notification for {self.recipient.username}: {self.message}"

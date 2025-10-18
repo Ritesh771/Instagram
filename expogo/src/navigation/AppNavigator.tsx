@@ -70,7 +70,14 @@ const AppNavigator: React.FC = () => {
                   animationTypeForReplace: 'push' // Better animation handling
                 }} 
               />
-              <Stack.Screen name="Profile" component={ProfileScreen} />
+              <Stack.Screen 
+                name="UserProfile" 
+                component={ProfileScreen}
+                options={{ 
+                  title: 'Profile',
+                  headerShown: true
+                }} 
+              />
               <Stack.Screen name="Settings" component={SettingsScreen} />
               <Stack.Screen name="Followers" component={FollowersScreen} />
               <Stack.Screen name="Following" component={FollowingScreen} />

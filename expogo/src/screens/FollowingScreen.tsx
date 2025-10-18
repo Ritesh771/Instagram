@@ -1,46 +1,162 @@
-import React, { useState } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image, TextInput } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { apiService } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
+import { useRoute } from '@react-navigation/native';
+import { useFollow } from '@/context/FollowContext';
 
-const FollowingScreen: React.FC = ({ navigation, route }: any) => {
-  // Dummy following data
-  const dummyFollowing = [
-    { id: 1, username: 'alice_w', full_name: 'Alice Walker', avatar: 'https://randomuser.me/api/portraits/women/1.jpg' },
-    { id: 2, username: 'bob_the_builder', full_name: 'Bob Builder', avatar: 'https://randomuser.me/api/portraits/men/2.jpg' },
-    { id: 3, username: 'charlie_chaplin', full_name: 'Charlie Chaplin', avatar: 'https://randomuser.me/api/portraits/men/3.jpg' },
-    { id: 4, username: 'diana_prince', full_name: 'Diana Prince', avatar: 'https://randomuser.me/api/portraits/women/4.jpg' },
-    { id: 5, username: 'elton_john', full_name: 'Elton John', avatar: 'https://randomuser.me/api/portraits/men/5.jpg' },
-    { id: 6, username: 'fiona_shrek', full_name: 'Fiona Shrek', avatar: 'https://randomuser.me/api/portraits/women/6.jpg' },
-    { id: 7, username: 'george_clooney', full_name: 'George Clooney', avatar: 'https://randomuser.me/api/portraits/men/7.jpg' },
-    { id: 8, username: 'harry_potter', full_name: 'Harry Potter', avatar: 'https://randomuser.me/api/portraits/men/8.jpg' },
-  ];
-
-  const initialFollowing = route.params?.following?.length > 0 ? route.params.following : dummyFollowing;
-
-  // Track follow state for each user
-  const [followingList, setFollowingList] = useState(
-    initialFollowing.map(user => ({ ...user, isFollowing: true }))
-  );
-
+const FollowingScreen: React.FC = ({ navigation }: any) => {
+  const { user } = useAuth();
+  const { followStatus, updateFollowStatus, refreshAllRequestedStatus, followUser, unfollowUser } = useFollow();
+  const route = useRoute();
+  const { userId } = route.params as { userId?: number } || {};
+  
+  const [followingList, setFollowingList] = useState<any[]>([]);
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch following data from backend
+  useEffect(() => {
+    const fetchFollowing = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Get the user ID from route params or use current user's ID
+        const targetUserId = userId || user?.id;
+        
+        if (!targetUserId) {
+          throw new Error('User ID not found');
+        }
+        
+        const response = await apiService.getFollowing(targetUserId);
+        const followingData = response.data.map((following: any) => ({
+          ...following,
+          full_name: `${following.first_name} ${following.last_name}`.trim(),
+          avatar: following.profile_pic || `https://ui-avatars.com/api/?name=${following.first_name}+${following.last_name}&background=random`,
+        }));
+        
+        // Fetch follow status for each user from context or API
+        const followingWithStatus = await Promise.all(
+          followingData.map(async (following: any) => {
+            // Check if we already have the status in context
+            const contextStatus = followStatus[following.id];
+            if (contextStatus) {
+              return {
+                ...following,
+                isFollowing: contextStatus.isFollowing,
+                isRequested: contextStatus.isRequested
+              };
+            }
+            
+            // Otherwise fetch from API to ensure we have the latest status
+            try {
+              const statusResponse = await apiService.checkFollowStatus(following.id);
+              // Update context with the fetched status
+              updateFollowStatus(following.id, statusResponse.data.is_following, statusResponse.data.is_requested || false);
+              return {
+                ...following,
+                isFollowing: statusResponse.data.is_following,
+                isRequested: statusResponse.data.is_requested || false
+              };
+            } catch (err) {
+              // If we can't get follow status, default to not following
+              console.error(`Error checking follow status for user ${following.id}:`, err);
+              return {
+                ...following,
+                isFollowing: false,
+                isRequested: false
+              };
+            }
+          })
+        );
+        
+        setFollowingList(followingWithStatus);
+      } catch (err) {
+        const apiError = apiService.handleError(err);
+        setError(apiError.message);
+        console.error('Error fetching following:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFollowing();
+  }, [userId, user?.id]); // Removed followStatus from dependencies to prevent continuous polling
+
+  // Periodically refresh requested statuses
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshAllRequestedStatus();
+    }, 30000); // Refresh every 30 seconds
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  // Update following list when followStatus changes
+  useEffect(() => {
+    setFollowingList(prevFollowing => 
+      prevFollowing.map(following => {
+        const status = followStatus[following.id];
+        if (status) {
+          return {
+            ...following,
+            isFollowing: status.isFollowing,
+            isRequested: status.isRequested
+          };
+        }
+        return following;
+      })
+    );
+  }, [followStatus]);
 
   // Filter following by search
-  const filteredFollowing = followingList.filter((f: any) =>
+  const filteredFollowing = followingList.filter((f) =>
     f.username.toLowerCase().includes(search.toLowerCase()) ||
-    f.full_name?.toLowerCase().includes(search.toLowerCase())
+    f.full_name.toLowerCase().includes(search.toLowerCase())
   );
 
   // Toggle follow/unfollow
-  const toggleFollow = (id: number) => {
-    setFollowingList(prev =>
-      prev.map(user =>
-        user.id === id ? { ...user, isFollowing: !user.isFollowing } : user
-      )
-    );
+  const toggleFollow = async (id: number, username: string, isFollowing: boolean) => {
+    try {
+      if (isFollowing || followStatus[id]?.isRequested) {
+        // Unfollow user
+        const success = await unfollowUser(id);
+        if (success) {
+          Alert.alert('Success', `You have unfollowed @${username}.`);
+        } else {
+          Alert.alert('Error', 'Failed to unfollow user');
+        }
+      } else {
+        // Follow user
+        const success = await followUser(id);
+        if (success) {
+          // Get the updated status from context
+          const status = followStatus[id] || { isFollowing: false, isRequested: false };
+          
+          if (status.isRequested) {
+            Alert.alert('Follow Request Sent', `Your follow request to @${username} has been sent.`);
+          } else if (status.isFollowing) {
+            Alert.alert('Success', `You are now following @${username}.`);
+          }
+        } else {
+          Alert.alert('Error', 'Failed to follow user');
+        }
+      }
+    } catch (err) {
+      const apiError = apiService.handleError(err);
+      Alert.alert('Error', apiError.message);
+      console.error('Error toggling follow:', err);
+    }
   };
 
   const renderItem = ({ item }: any) => (
     <View style={styles.item}>
-      <TouchableOpacity style={styles.avatarWrapper} onPress={() => console.log('Go to user profile', item.username)}>
+      <TouchableOpacity 
+        style={styles.avatarWrapper} 
+        onPress={() => (navigation as any).navigate('UserProfile', { userId: item.id })}
+      >
         {item.avatar ? (
           <Image source={{ uri: item.avatar }} style={styles.avatarImage} />
         ) : (
@@ -60,12 +176,16 @@ const FollowingScreen: React.FC = ({ navigation, route }: any) => {
       <TouchableOpacity
         style={[
           styles.followButton,
-          { backgroundColor: item.isFollowing ? '#3897f0' : '#fff', borderWidth: item.isFollowing ? 0 : 1, borderColor: '#3897f0' }
+          { 
+            backgroundColor: item.isFollowing || item.isRequested ? '#fff' : '#3897f0', 
+            borderWidth: item.isFollowing || item.isRequested ? 1 : 0, 
+            borderColor: '#3897f0' 
+          }
         ]}
-        onPress={() => toggleFollow(item.id)}
+        onPress={() => toggleFollow(item.id, item.username, item.isFollowing)}
       >
-        <Text style={[styles.followButtonText, { color: item.isFollowing ? '#fff' : '#3897f0' }]}>
-          {item.isFollowing ? 'Following' : 'Follow'}
+        <Text style={[styles.followButtonText, { color: item.isFollowing || item.isRequested ? '#3897f0' : '#fff' }]}>
+          {item.isRequested ? 'Requested' : item.isFollowing ? 'Following' : 'Follow'}
         </Text>
       </TouchableOpacity>
     </View>
@@ -74,109 +194,183 @@ const FollowingScreen: React.FC = ({ navigation, route }: any) => {
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <View style={styles.emptyIcon}>
-        <Text style={styles.emptyIconText}>➡️</Text>
+        <Text style={styles.emptyIconText}>👥</Text>
       </View>
-      <Text style={styles.emptyTitle}>Not Following Anyone Yet</Text>
-      <Text style={styles.emptySubtitle}>Once you follow someone, they will appear here.</Text>
+      <Text style={styles.emptyTitle}>No Following Found</Text>
+      <Text style={styles.emptySubtitle}>Try a different search.</Text>
     </View>
   );
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerText}>Following</Text>
+        </View>
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search following..."
+            value={search}
+            onChangeText={setSearch}
+          />
+        </View>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerText}>Following</Text>
       </View>
-      {/* 🔍 Search Bar */}
+      
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
           placeholder="Search following..."
-          placeholderTextColor="#888"
           value={search}
           onChangeText={setSearch}
         />
       </View>
 
-      <FlatList
-        data={filteredFollowing}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={renderItem}
-        ListEmptyComponent={renderEmpty}
-        contentContainerStyle={{ flexGrow: 1 }}
-      />
+      {error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredFollowing}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id.toString()}
+          ListEmptyComponent={renderEmpty}
+        />
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
+  container: {
+    flex: 1,
     backgroundColor: '#fff',
-    paddingTop: 50, 
   },
-
-  // 🔍 Search Bar
+  header: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ccc',
+    <marginTop:40></marginTop:40>
+  },
+  headerText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
   searchContainer: {
-    paddingHorizontal: 15,
-    paddingBottom: 10,
+    padding: 16,
+    paddingBottom: 8,
   },
   searchInput: {
-    backgroundColor: '#f0f0f0',
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    fontSize: 15,
-    color: '#111',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
   },
-
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderBottomWidth: 0.5,
+    padding: 16,
+    borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
-
-  avatarWrapper: { marginRight: 15 },
+  avatarWrapper: {
+    marginRight: 12,
+  },
   avatarImage: {
-    width: 55,
-    height: 55,
-    borderRadius: 30,
-    borderWidth: 2,
-    borderColor: '#ff5a5f',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   },
   avatarFallback: {
-    width: 55,
-    height: 55,
-    borderRadius: 30,
-    backgroundColor: '#007AFF',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#ddd',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarFallbackText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
-
-  info: { flex: 1 },
-  username: { fontSize: 16, fontWeight: '600', color: '#111' },
-  fullName: { fontSize: 14, color: '#888', marginTop: 2 },
-
+  avatarFallbackText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#666',
+  },
+  info: {
+    flex: 1,
+  },
+  username: {
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  fullName: {
+    color: '#666',
+    fontSize: 14,
+  },
   followButton: {
-    paddingVertical: 6,
     paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 6,
   },
   followButtonText: {
     fontWeight: '600',
     fontSize: 14,
   },
-  header: { paddingVertical: 15, alignItems: 'center', borderBottomWidth: 0.5, borderBottomColor: '#ccc', marginBottom: 10 },
-  headerText: { fontSize: 22, fontWeight: 'bold', color: '#111' },
-  // Empty state
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30 },
-  emptyIcon: { backgroundColor: '#f5f5f5', padding: 20, borderRadius: 50, marginBottom: 15 },
-  emptyIconText: { fontSize: 36 },
-  emptyTitle: { fontSize: 20, fontWeight: 'bold', color: '#222', marginBottom: 5 },
-  emptySubtitle: { fontSize: 15, color: '#666', textAlign: 'center' },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  emptyIconText: {
+    fontSize: 40,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    color: '#666',
+    textAlign: 'center',
+  },
 });
 
 export default FollowingScreen;

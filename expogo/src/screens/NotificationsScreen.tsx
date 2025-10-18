@@ -1,109 +1,478 @@
-import React from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import React, { useState, useCallback, useEffect } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  Image,
+  StyleSheet,
+  Alert,
+  RefreshControl,
+  SafeAreaView,
+} from 'react-native';
+import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { apiService } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
+import { useFollow } from '@/context/FollowContext';
+
+// Define TypeScript interfaces
+interface User {
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  profile_pic?: string;
+}
+
+interface Post {
+  id: number;
+}
+
+interface NotificationItem {
+  id: number;
+  actor: User;
+  notification_type: string;
+  post?: Post;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+  timestamp: string;
+  read: boolean;
+}
+
+interface ApiResponse<T> {
+  data: T;
+}
+
+interface NotificationResponse {
+  id: number;
+  actor: User;
+  notification_type: string;
+  post?: Post;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+interface ApiError {
+  response?: {
+    status?: number;
+  };
+}
+
+// Define navigation parameter types
+type RootStackParamList = {
+  UserProfile: { userId: number };
+  PostView: { postId: number };
+};
 
 const NotificationsScreen: React.FC = () => {
-  const notifications = [
-    { id: 1, type: 'follow_request', message: 'John Doe sent you a follow request', avatar: 'https://i.pravatar.cc/150?img=1' },
-    { id: 2, type: 'like', message: 'Jane liked your post', avatar: 'https://i.pravatar.cc/150?img=2' },
-    { id: 3, type: 'follow_request', message: 'Alice sent you a follow request', avatar: 'https://i.pravatar.cc/150?img=3' },
-  ];
+  const { user: currentUser } = useAuth();
+  const { updateFollowStatus, refreshFollowStatus } = useFollow();
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const renderIcon = (type: string) => {
-    switch (type) {
-      case 'follow_request':
-        return <Ionicons name="person-add-outline" size={22} color="#007AFF" />;
-      case 'like':
-        return <Ionicons name="heart-outline" size={22} color="#FF2D55" />;
-      default:
-        return <MaterialIcons name="notifications-none" size={22} color="#888" />;
+  const fetchNotifications = useCallback(async () => {
+    try {
+      setLoading(true);
+      const notificationsResponse: ApiResponse<NotificationResponse[]> = await apiService.getNotifications();
+      const allNotifications: NotificationItem[] = notificationsResponse.data.map((notification) => ({
+        ...notification,
+        timestamp: notification.created_at,
+        read: notification.is_read
+      }));
+      
+      setNotifications(allNotifications);
+    } catch (err: unknown) {
+      const apiError = apiService.handleError(err);
+      setError(apiError.message);
+      console.error('Error fetching notifications:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Refresh notifications
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const notificationsResponse: ApiResponse<NotificationResponse[]> = await apiService.getNotifications();
+      const allNotifications: NotificationItem[] = notificationsResponse.data.map((notification) => ({
+        ...notification,
+        timestamp: notification.created_at,
+        read: notification.is_read
+      }));
+      
+      setNotifications(allNotifications);
+    } catch (err: unknown) {
+      const apiError = apiService.handleError(err);
+      console.error('Error refreshing notifications:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  const handleMarkAsRead = async (notificationId: number) => {
+    try {
+      await apiService.markNotificationAsRead(notificationId);
+      
+      // Update the notification in the list
+      setNotifications(prev => 
+        prev.map(notification => 
+          notification.id === notificationId 
+            ? { ...notification, read: true } 
+            : notification
+        )
+      );
+    } catch (err: unknown) {
+      const apiError = apiService.handleError(err);
+      console.error('Error marking notification as read:', err);
     }
   };
 
-  const renderItem = ({ item }: { item: any }) => (
-    <View style={styles.notificationCard}>
-      <Image source={{ uri: item.avatar }} style={styles.avatar} />
-      <View style={styles.messageContainer}>
-        <Text style={styles.message}>{item.message}</Text>
-        {item.type === 'follow_request' && (
-          <View style={styles.actions}>
-            <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#3897f0' }]}>
-              <Text style={styles.actionText}>Accept</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc' }]}>
-              <Text style={[styles.actionText, { color: '#333' }]}>Reject</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+  const handleAcceptRequest = async (requesterId: number, requesterName: string) => {
+    try {
+      await apiService.acceptFollowRequest(requesterId);
+      
+      // Update the follow status in the context - requester is now following current user
+      updateFollowStatus(requesterId, true, false);
+      
+      // Also refresh the follow status from the backend to ensure consistency
+      await refreshFollowStatus(requesterId);
+      
+      // Refresh notifications to show the new follow_accept notification
+      await onRefresh();
+      
+      Alert.alert('Success', `You are now following ${requesterName}.`);
+    } catch (err: unknown) {
+      const apiError = apiService.handleError(err);
+      Alert.alert('Error', apiError.message);
+      console.error('Error accepting follow request:', err);
+      
+      // If it's a 404 error, it might mean the request was already processed
+      if (isApiErrorWithStatus(err, 404)) {
+        // Refresh notifications to get the updated state
+        await onRefresh();
+      }
+    }
+  };
+
+  const handleRejectRequest = async (requesterId: number, requesterName: string) => {
+    try {
+      await apiService.rejectFollowRequest(requesterId);
+      
+      // Update the follow status in the context - requester is not following and not requested
+      updateFollowStatus(requesterId, false, false);
+      
+      // Also refresh the follow status from the backend to ensure consistency
+      await refreshFollowStatus(requesterId);
+      
+      // Refresh notifications to ensure the list is up to date
+      await onRefresh();
+      
+      Alert.alert('Success', `Follow request from ${requesterName} has been rejected.`);
+    } catch (err: unknown) {
+      const apiError = apiService.handleError(err);
+      Alert.alert('Error', apiError.message);
+      console.error('Error rejecting follow request:', err);
+      
+      // If it's a 404 error, it might mean the request was already processed
+      if (isApiErrorWithStatus(err, 404)) {
+        // Refresh notifications to get the updated state
+        await onRefresh();
+      }
+    }
+  };
+
+  // Helper function to check if error has specific status
+  const isApiErrorWithStatus = (err: unknown, status: number): boolean => {
+    return (
+      err instanceof Error && 
+      'response' in err && 
+      (err as ApiError).response?.status === status
+    );
+  };
+
+  const renderFollowRequest = ({ item }: { item: NotificationItem }) => (
+    <View style={[styles.notificationItem, !item.read && styles.unreadNotification]}>
+      <TouchableOpacity 
+        style={styles.userContent}
+        onPress={() => {
+          handleMarkAsRead(item.id);
+          navigation.navigate('UserProfile', { userId: item.actor.id });
+        }}
+      >
+        <Image
+          source={{ uri: item.actor.profile_pic || `https://ui-avatars.com/api/?name=${item.actor.first_name}+${item.actor.last_name}&background=random` }}
+          style={styles.avatar}
+        />
+        <View style={styles.notificationContent}>
+          <Text style={styles.notificationText}>
+            <Text style={styles.usernameText}>@{item.actor.username}</Text> wants to follow you
+          </Text>
+          <Text style={styles.timestampText}>
+            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        </View>
+      </TouchableOpacity>
+      
+      <View style={styles.actionButtons}>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.rejectButton]}
+          onPress={() => handleRejectRequest(item.actor.id, item.actor.username)}
+        >
+          <Text style={[styles.actionText, styles.rejectText]}>Reject</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.acceptButton]}
+          onPress={() => handleAcceptRequest(item.actor.id, item.actor.username)}
+        >
+          <Text style={[styles.actionText, styles.acceptText]}>Accept</Text>
+        </TouchableOpacity>
       </View>
-      {item.type !== 'follow_request' && <View style={styles.iconContainer}>{renderIcon(item.type)}</View>}
     </View>
   );
 
+  const renderLikeNotification = ({ item }: { item: NotificationItem }) => (
+    <View style={[styles.notificationItem, !item.read && styles.unreadNotification]}>
+      <TouchableOpacity 
+        style={styles.userContent}
+        onPress={() => {
+          handleMarkAsRead(item.id);
+          if (item.post) {
+            navigation.navigate('PostView', { postId: item.post.id });
+          }
+        }}
+      >
+        <Image
+          source={{ uri: item.actor.profile_pic || `https://ui-avatars.com/api/?name=${item.actor.first_name}+${item.actor.last_name}&background=random` }}
+          style={styles.avatar}
+        />
+        <View style={styles.notificationContent}>
+          <Text style={styles.notificationText}>
+            <Text style={styles.usernameText}>@{item.actor.username}</Text> liked your post
+          </Text>
+          <Text style={styles.timestampText}>
+            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderFollowAcceptNotification = ({ item }: { item: NotificationItem }) => (
+    <View style={[styles.notificationItem, !item.read && styles.unreadNotification]}>
+      <TouchableOpacity 
+        style={styles.userContent}
+        onPress={() => {
+          handleMarkAsRead(item.id);
+          navigation.navigate('UserProfile', { userId: item.actor.id });
+        }}
+      >
+        <Image
+          source={{ uri: item.actor.profile_pic || `https://ui-avatars.com/api/?name=${item.actor.first_name}+${item.actor.last_name}&background=random` }}
+          style={styles.avatar}
+        />
+        <View style={styles.notificationContent}>
+          <Text style={styles.notificationText}>
+            <Text style={styles.usernameText}>@{item.actor.username}</Text> accepted your follow request
+          </Text>
+          <Text style={styles.timestampText}>
+            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderCommentNotification = ({ item }: { item: NotificationItem }) => (
+    <View style={[styles.notificationItem, !item.read && styles.unreadNotification]}>
+      <TouchableOpacity 
+        style={styles.userContent}
+        onPress={() => {
+          handleMarkAsRead(item.id);
+          if (item.post) {
+            navigation.navigate('PostView', { postId: item.post.id });
+          }
+        }}
+      >
+        <Image
+          source={{ uri: item.actor.profile_pic || `https://ui-avatars.com/api/?name=${item.actor.first_name}+${item.actor.last_name}&background=random` }}
+          style={styles.avatar}
+        />
+        <View style={styles.notificationContent}>
+          <Text style={styles.notificationText}>
+            <Text style={styles.usernameText}>@{item.actor.username}</Text> commented on your post: {item.message.substring(item.message.indexOf(':') + 2)}
+          </Text>
+          <Text style={styles.timestampText}>
+            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderNotification = ({ item }: { item: NotificationItem }) => {
+    switch (item.notification_type) {
+      case 'follow_request':
+        return renderFollowRequest({ item });
+      case 'follow_accept':
+        return renderFollowAcceptNotification({ item });
+      case 'like':
+        return renderLikeNotification({ item });
+      case 'comment':
+        return renderCommentNotification({ item });
+      default:
+        return null;
+    }
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centerContainer}>
+          <Text>Loading notifications...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centerContainer}>
+          <Text style={styles.errorText}>Error: {error}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Page Header */}
       <View style={styles.header}>
         <Text style={styles.headerText}>Notifications</Text>
       </View>
-
+      
       <FlatList
         data={notifications}
+        renderItem={renderNotification}
         keyExtractor={(item) => item.id.toString()}
-        renderItem={renderItem}
-        contentContainerStyle={notifications.length === 0 ? { flex: 1, justifyContent: 'center' } : {}}
-        ListEmptyComponent={<Text style={styles.emptyText}>No notifications yet</Text>}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListEmptyComponent={
+          <View style={styles.centerContainer}>
+            <Text style={styles.emptyText}>No notifications yet</Text>
+          </View>
+        }
       />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f2f2f7', paddingHorizontal: 10, paddingTop: 10 },
-
-  // Header
-  header: { paddingVertical: 15, alignItems: 'center', borderBottomWidth: 0.5, borderBottomColor: '#ccc', marginBottom: 10 },
-  headerText: { fontSize: 22, fontWeight: 'bold', color: '#111' },
-
-  notificationCard: {
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  header: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#ccc',
+    marginBottom: 10,
+    marginTop: 40
+  },
+  headerText: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#111'
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 16,
+  },
+  emptyText: {
+    color: '#888',
+    fontSize: 16,
+  },
+  notificationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
-    elevation: 3,
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#eee',
   },
-
-  avatar: {
-    width: 55,
-    height: 55,
-    borderRadius: 28,
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: '#ddd',
+  unreadNotification: {
+    backgroundColor: '#f0f8ff',
   },
-
-  messageContainer: { flex: 1 },
-  message: { fontSize: 16, color: '#111', fontWeight: '500' },
-
-  actions: { flexDirection: 'row', marginTop: 8, gap: 10 },
-  actionButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 18,
-    borderRadius: 8,
+  userContent: {
+    flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
-  actionText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-
-  iconContainer: { marginLeft: 10 },
-
-  emptyText: { textAlign: 'center', marginTop: 20, color: '#888', fontSize: 16 },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#ccc',
+    marginRight: 12,
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationText: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 4,
+  },
+  usernameText: {
+    fontWeight: 'bold',
+  },
+  timestampText: {
+    fontSize: 12,
+    color: '#888',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+  },
+  actionButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  rejectButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ff3b30',
+  },
+  acceptButton: {
+    backgroundColor: '#007AFF',
+  },
+  actionText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  rejectText: {
+    color: '#ff3b30',
+  },
+  acceptText: {
+    color: '#fff',
+  },
 });
 
 export default NotificationsScreen;

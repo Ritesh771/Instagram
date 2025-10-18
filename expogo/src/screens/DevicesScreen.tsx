@@ -11,46 +11,64 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { apiService } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 
 const DevicesScreen: React.FC = () => {
+  const { logout } = useAuth();
   const [devices, setDevices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Fetch device data from backend
   useEffect(() => {
-    // Simulate fetching device data
-    setTimeout(() => {
-      setDevices([
-        {
-          id: 1,
-          name: 'iPhone 14 Pro',
-          platform: 'iOS',
-          location: 'Bangalore, India',
-          last_active: 'Oct 11, 2025 - 8:24 PM',
-          image: 'https://cdn-icons-png.flaticon.com/512/831/831276.png',
-        },
-        {
-          id: 2,
-          name: 'Samsung Galaxy S22',
-          platform: 'Android',
-          location: 'Hyderabad, India',
-          last_active: 'Oct 10, 2025 - 5:10 PM',
-          image: 'https://cdn-icons-png.flaticon.com/512/882/882747.png',
-        },
-        {
-          id: 3,
-          name: 'Chrome Browser',
-          platform: 'Web',
-          location: 'Mumbai, India',
-          last_active: 'Oct 6, 2025 - 1:02 PM',
-          image: 'https://cdn-icons-png.flaticon.com/512/5968/5968875.png',
-        },
-      ]);
-      setLoading(false);
-    }, 1200);
+    const fetchDevices = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const response = await apiService.getDevices();
+        setDevices(response.data.map((device: any) => ({
+          ...device,
+          name: device.device_name || 'Unknown Device',
+          platform: `${device.os || 'Unknown OS'} ${device.browser || 'Unknown Browser'}`,
+          location: device.ip_address || 'Unknown Location',
+          last_active: new Date(device.last_activity).toLocaleString(),
+          image: getDeviceImage(device.os, device.browser)
+        })));
+      } catch (err) {
+        const apiError = apiService.handleError(err);
+        setError(apiError.message);
+        console.error('Error fetching devices:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDevices();
   }, []);
 
-  const handleLogoutDevice = (deviceId: number) => {
+  const getDeviceImage = (os: string, browser: string) => {
+    const osLower = (os || '').toLowerCase();
+    const browserLower = (browser || '').toLowerCase();
+    
+    if (osLower.includes('android')) {
+      return 'https://cdn-icons-png.flaticon.com/512/882/882747.png';
+    } else if (osLower.includes('ios') || osLower.includes('iphone') || osLower.includes('ipad')) {
+      return 'https://cdn-icons-png.flaticon.com/512/831/831276.png';
+    } else if (osLower.includes('windows')) {
+      return 'https://cdn-icons-png.flaticon.com/512/883/883506.png';
+    } else if (osLower.includes('mac') || osLower.includes('darwin')) {
+      return 'https://cdn-icons-png.flaticon.com/512/831/831584.png';
+    } else if (osLower.includes('linux')) {
+      return 'https://cdn-icons-png.flaticon.com/512/5185/5185388.png';
+    } else {
+      return 'https://cdn-icons-png.flaticon.com/512/5968/5968875.png'; // Web browser
+    }
+  };
+
+  const handleLogoutDevice = async (deviceId: number) => {
     Alert.alert(
       'Log Out Device',
       'Are you sure you want to log out from this device?',
@@ -59,31 +77,53 @@ const DevicesScreen: React.FC = () => {
         {
           text: 'Log Out',
           style: 'destructive',
-          onPress: () => {
-            setDevices((prev) => prev.filter((d) => d.id !== deviceId));
-            Alert.alert('Success', 'Device logged out successfully.');
+          onPress: async () => {
+            try {
+              // Get current refresh token to exclude it from logout
+              const refreshToken = await apiService.getRefreshToken();
+              await apiService.logoutDevice(deviceId, refreshToken || undefined);
+              setDevices((prev) => prev.filter((d) => d.id !== deviceId));
+              Alert.alert('Success', 'Device logged out successfully.');
+              
+              // Check if this was the current device (we can't easily determine this)
+              // In a real implementation, the backend would tell us if this was the current device
+              // For now, we'll assume it wasn't since we're still logged in
+            } catch (err) {
+              const apiError = apiService.handleError(err);
+              Alert.alert('Error', apiError.message);
+              console.error('Error logging out device:', err);
+            }
           },
         },
       ]
     );
   };
 
-  const handleLogoutAll = () => {
+  const handleLogoutAll = async () => {
     Alert.alert(
       'Log Out All Devices',
-      'This will log you out from all devices except this one.',
+      'This will log you out from all devices including this one.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Log Out All',
           style: 'destructive',
-          onPress: () => {
-            setLoggingOut(true);
-            setTimeout(() => {
+          onPress: async () => {
+            try {
+              setLoggingOut(true);
+              // Log out all devices including current one
+              await apiService.logoutAllDevices();
               setDevices([]);
-              setLoggingOut(false);
               Alert.alert('Success', 'All devices have been logged out.');
-            }, 1000);
+              // Also logout locally
+              logout();
+            } catch (err) {
+              const apiError = apiService.handleError(err);
+              Alert.alert('Error', apiError.message);
+              console.error('Error logging out all devices:', err);
+            } finally {
+              setLoggingOut(false);
+            }
           },
         },
       ]
@@ -109,13 +149,30 @@ const DevicesScreen: React.FC = () => {
     </View>
   );
 
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centerContainer]}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centerContainer]}>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => window.location.reload()}>
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      {loading ? (
-        <ActivityIndicator size="large" color="#000" style={{ marginTop: 30 }} />
-      ) : devices.length === 0 ? (
+      {devices.length === 0 ? (
         <View style={{ alignItems: 'center', marginTop: 50 }}>
-          <Ionicons name="devices-outline" size={60} color="#aaa" />
+          <Ionicons name="phone-portrait-outline" size={60} color="#aaa" />
           <Text style={{ color: '#666', marginTop: 10 }}>
             No active devices found.
           </Text>
@@ -149,6 +206,26 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fdfdfd',
     paddingHorizontal: 20,
+  },
+  centerContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  retryButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontWeight: '600',
   },
   deviceCard: {
     flexDirection: 'row',

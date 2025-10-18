@@ -13,18 +13,25 @@ from .views import (
     PostListCreateView,
     PostDeleteView,
     LikePostView,
+    CommentPostView,
+    DeleteCommentView,
     ProfileView,
     UsernamePreviewView,
     BiometricChallengeView,
     BiometricRegisterView,
     BiometricAuthenticateView,
     UserDetailView,  #for viewing user profiles with privacy
+    UserListView,  # for searching users
     PendingFollowRequestsView,  # Newly added for listing pending requests
     AcceptFollowRequestView,  # Newly added for accepting requests
     RejectFollowRequestView,
+    CheckFollowStatusView,  # Newly added for checking follow status
     FollowUserView,
     UnfollowUserView,
+    FollowersListView,
+    FollowingListView,
     DeviceListView, LogoutDeviceView, LogoutAllDevicesView,  # Device management views
+    NotificationListView, MarkNotificationAsReadView, MarkAllNotificationsAsReadView,  # Notification views
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -51,9 +58,15 @@ urlpatterns = [
     path('posts/', PostListCreateView.as_view(), name='posts'),
     path('posts/<int:pk>/', PostDeleteView.as_view(), name='post-delete'),
     path('posts/<int:post_id>/like/', LikePostView.as_view(), name='post-like'),
+    path('posts/<int:post_id>/comment/', CommentPostView.as_view(), name='post-comment'),
+    path('comments/<int:comment_id>/', DeleteCommentView.as_view(), name='delete-comment'),
     path('users/<int:pk>/', UserDetailView.as_view(), name='user-detail'),
+    path('users/', UserListView.as_view(), name='user-list'),
     path('users/<int:user_id>/follow/', FollowUserView.as_view(), name='follow-user'),  # Critical route
     path('users/<int:user_id>/unfollow/', UnfollowUserView.as_view(), name='unfollow-user'),
+    path('users/<int:user_id>/followers/', FollowersListView.as_view(), name='user-followers'),
+    path('users/<int:user_id>/following/', FollowingListView.as_view(), name='user-following'),
+    path('users/<int:user_id>/follow-status/', CheckFollowStatusView.as_view(), name='user-follow-status'),
     path('follow-requests/pending/', PendingFollowRequestsView.as_view(), name='pending-requests'),
     path('follow-requests/accept/<int:requester_id>/', AcceptFollowRequestView.as_view(), name='accept-request'),
     path('follow-requests/reject/<int:requester_id>/', RejectFollowRequestView.as_view(), name='reject-request'),
@@ -61,4 +74,8 @@ urlpatterns = [
     path('devices/', DeviceListView.as_view(), name='device-list'),
     path('devices/<int:device_id>/logout/', LogoutDeviceView.as_view(), name='logout-device'),
     path('devices/logout-all/', LogoutAllDevicesView.as_view(), name='logout-all-devices'),
+    # notifications
+    path('notifications/', NotificationListView.as_view(), name='notification-list'),
+    path('notifications/<int:notification_id>/read/', MarkNotificationAsReadView.as_view(), name='mark-notification-read'),
+    path('notifications/read-all/', MarkAllNotificationsAsReadView.as_view(), name='mark-all-notifications-read'),
 ]
