@@ -23,7 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'dev-secret-key-change-me-in-production'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2', '192.168.0.102', '192.168.31.177', '192.168.31.227', '192.168.2.8', '0.0.0.0', '*']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2', '192.168.0.102', '192.168.31.177', '192.168.31.227', '192.168.2.8', '0.0.0.0', '192.168.2.4', '*']
 
 # Application definition
 INSTALLED_APPS = [
@@ -160,6 +160,11 @@ CORS_ALLOWED_ORIGINS = [
     "exp://192.168.2.8:19000",
     "exp://192.168.2.8:8082",
     "exp://10.104.83.65:8081",
+    # Your current IP for mobile device
+    "http://192.168.2.4:8081",
+    "http://192.168.2.4:19000",
+    "exp://192.168.2.4:8081",
+    "exp://192.168.2.4:19000",
     # Expo Go URLs
     "exp://localhost:19000",
     "exp://localhost:8081",

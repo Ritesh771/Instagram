@@ -45,6 +45,7 @@ export interface ApiError {
 // API Configuration
 // IMPORTANT: Update this IP to match your backend server's IP address
 // To find your IP: Run 'ipconfig' on Windows or 'ifconfig' on Mac/Linux
+// Current IP: 192.168.2.4
 
 // Choose the appropriate URL based on your setup:
 const API_URLS = {
@@ -53,13 +54,13 @@ const API_URLS = {
   // For iOS Simulator
   IOS_SIMULATOR: 'http://localhost:8000/api',
   // For Physical Device (replace with your actual IP)
-  PHYSICAL_DEVICE: 'http://192.168.2.5:8000/api', // Update this IP!
+  PHYSICAL_DEVICE: 'http://192.168.2.4:8000/api', // Updated to your actual IP
   // For development testing
   LOCALHOST: 'http://localhost:8000/api',
 };
 
 // Auto-detect or manually set the API URL - using the working backend URL
-const API_BASE_URL = API_URLS.PHYSICAL_DEVICE; // http://192.168.2.8:8000/api
+const API_BASE_URL = API_URLS.PHYSICAL_DEVICE;
 
 class ApiService {
   private api: AxiosInstance;
@@ -160,62 +161,52 @@ class ApiService {
     password: string;
   }): Promise<AxiosResponse<{ detail: string; username: string }>> {
     try {
-      const response = await this.api.post('/auth/register/', data);
+      const response = await this.api.post('auth/register/', data);
       return response;
     } catch (error) {
       throw error;
-    }
+      }
   }
 
   async verifyOTP(data: { email: string; code: string }): Promise<AxiosResponse<any>> {
-    return this.api.post('/auth/verify-otp/', data);
+    return this.api.post('auth/verify-otp/', data);
   }
 
   async login(data: { username: string; password: string }): Promise<AxiosResponse<any>> {
-    return this.api.post('/auth/login/', data);
+    return this.api.post('auth/login/', data);
   }
 
   async verify2FA(data: { username: string; code: string }): Promise<AxiosResponse<any>> {
-    return this.api.post('/auth/verify-2fa/', data);
-  }
-
-  async logout(): Promise<void> {
-    await Storage.removeItem('access_token');
-    await Storage.removeItem('refresh_token');
-    await Storage.removeItem('user');
+    return this.api.post('auth/verify-2fa/', data);
   }
 
   async requestPasswordReset(data: { email: string }): Promise<AxiosResponse<any>> {
-    return this.api.post('/auth/reset-password/', data);
+    return this.api.post('auth/reset-password/', data);
   }
 
   async confirmPasswordReset(data: { email: string; code: string; new_password: string }): Promise<AxiosResponse<any>> {
-    return this.api.post('/auth/reset-password/confirm/', data);
-  }
-
-  async refreshAccessToken(refresh: string): Promise<AxiosResponse<{ access: string; refresh: string }>> {
-    return axios.post(`${API_BASE_URL}/auth/token/refresh/`, { refresh });
+    return this.api.post('auth/reset-password/confirm/', data);
   }
 
   async updateProfile(data: any): Promise<AxiosResponse<User>> {
-    return this.api.patch('/auth/profile/', data);
+    return this.api.patch('auth/profile/', data);
   }
 
   async getProfile(): Promise<AxiosResponse<User>> {
-    return this.api.get('/auth/profile/');
+    return this.api.get('auth/profile/');
   }
 
   async getUsernamePreview(data: { first_name: string; last_name: string; email: string }): Promise<AxiosResponse<{ username: string }>> {
-    return this.api.post('/auth/username-preview/', data);
+    return this.api.post('auth/username-preview/', data);
   }
 
   // Posts endpoints
   async getPosts(): Promise<AxiosResponse<Post[]>> {
-    return this.api.get('/posts/');
+    return this.api.get('posts/');
   }
 
   async createPost(data: FormData): Promise<AxiosResponse<Post>> {
-    return this.api.post('/posts/', data, {
+    return this.api.post('posts/', data, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -223,112 +214,98 @@ class ApiService {
   }
 
   async deletePost(id: number): Promise<AxiosResponse<void>> {
-    return this.api.delete(`/posts/${id}/`);
+    return this.api.delete(`posts/${id}/`);
   }
 
   // Liking API Methods
   async likePost(postId: number): Promise<AxiosResponse<{ liked: boolean; likes_count: number }>> {
-    return this.api.post(`/posts/${postId}/like/`);
+    return this.api.post(`posts/${postId}/like/`);
   }
 
   async unlikePost(postId: number): Promise<AxiosResponse<{ liked: boolean; likes_count: number }>> {
-    return this.api.delete(`/posts/${postId}/like/`);
+    return this.api.delete(`posts/${postId}/like/`);
   }
 
-  // Biometric authentication methods
-  async isBiometricAvailable(): Promise<{ available: boolean; types: string[] }> {
-    try {
-      const isAvailable = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-      const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
-      
-      return {
-        available: isAvailable && isEnrolled,
-        types: supportedTypes.map(type => 
-          type === LocalAuthentication.AuthenticationType.FINGERPRINT ? 'fingerprint' :
-          type === LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION ? 'face' :
-          'biometric'
-        )
-      };
-    } catch (error) {
-      return { available: false, types: [] };
+  // Comment API Methods
+  async commentOnPost(postId: number, content: string): Promise<AxiosResponse<any>> {
+    return this.api.post(`posts/${postId}/comment/`, { content });
+  }
+
+  async deleteComment(commentId: number): Promise<AxiosResponse<any>> {
+    return this.api.delete(`comments/${commentId}/`);
+  }
+
+  // Follow API Methods
+  async followUser(userId: number): Promise<AxiosResponse<any>> {
+    return this.api.post(`users/${userId}/follow/`);
+  }
+
+  async unfollowUser(userId: number): Promise<AxiosResponse<any>> {
+    return this.api.post(`users/${userId}/unfollow/`);
+  }
+
+  async getFollowers(userId: number): Promise<AxiosResponse<User[]>> {
+    return this.api.get(`users/${userId}/followers/`);
+  }
+
+  async getFollowing(userId: number): Promise<AxiosResponse<User[]>> {
+    return this.api.get(`users/${userId}/following/`);
+  }
+
+  async checkFollowStatus(userId: number): Promise<AxiosResponse<{ is_following: boolean; is_self: boolean; is_requested?: boolean }>> {
+    return this.api.get(`users/${userId}/follow-status/`);
+  }
+
+  // Notification API Methods
+  async getNotifications(): Promise<AxiosResponse<any[]>> {
+    return this.api.get('notifications/');
+  }
+
+  async markNotificationAsRead(notificationId: number): Promise<AxiosResponse<any>> {
+    return this.api.post(`notifications/${notificationId}/read/`);
+  }
+
+  async markAllNotificationsAsRead(): Promise<AxiosResponse<any>> {
+    return this.api.post('notifications/read-all/');
+  }
+
+  async acceptFollowRequest(requesterId: number): Promise<AxiosResponse<any>> {
+    return this.api.post(`follow-requests/accept/${requesterId}/`);
+  }
+
+  async rejectFollowRequest(requesterId: number): Promise<AxiosResponse<any>> {
+    return this.api.post(`follow-requests/reject/${requesterId}/`);
+  }
+
+  // Search API Methods
+  async searchUsers(query: string): Promise<AxiosResponse<User[]>> {
+    return this.api.get(`users/?search=${encodeURIComponent(query)}`);
+  }
+
+  async getUserById(userId: number): Promise<AxiosResponse<User>> {
+    return this.api.get(`users/${userId}/`);
+  }
+
+  // Device Management API Methods
+  async getDevices(): Promise<AxiosResponse<any[]>> {
+    return this.api.get('devices/');
+  }
+
+  async logoutDevice(deviceId: number, refreshToken?: string): Promise<AxiosResponse<any>> {
+    const data: any = {};
+    if (refreshToken) {
+      data.refresh_token = refreshToken;
     }
+    return this.api.delete(`devices/${deviceId}/logout/`, { data });
   }
 
-  async authenticateWithBiometrics(): Promise<{ success: boolean; message?: string }> {
-    try {
-      const biometricCheck = await this.isBiometricAvailable();
-      if (!biometricCheck.available) {
-        return { success: false, message: 'Biometric authentication not available' };
-      }
-
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Unlock InstaPics',
-        cancelLabel: 'Cancel',
-        disableDeviceFallback: false,
-      });
-
-      if (result.success) {
-        return { success: true };
-      } else {
-        return { success: false, message: 'Biometric authentication failed' };
-      }
-    } catch (error) {
-      return { success: false, message: 'Biometric authentication error' };
-    }
+  async logoutAllDevices(): Promise<AxiosResponse<any>> {
+    // Log out all devices including current one
+    return this.api.post('devices/logout-all/');
   }
 
-  async registerBiometricCredential(username: string): Promise<{ success: boolean; message?: string }> {
-    // For mobile apps, we don't need WebAuthn - just check if biometrics are available
-    const biometricCheck = await this.isBiometricAvailable();
-    if (biometricCheck.available) {
-      return { success: true, message: 'Biometric authentication is available' };
-    } else {
-      return { success: false, message: 'Biometric authentication is not available on this device' };
-    }
-  }
-
-  async disableBiometricLogin(): Promise<{ success: boolean; message?: string }> {
-    // For mobile, this just returns success since we handle biometric state in the frontend
-    return { success: true, message: 'Biometric login disabled' };
-  }
-
-  async enableBiometricLogin(): Promise<{ success: boolean; message?: string }> {
-    try {
-      // Check if biometrics are available
-      const biometricCheck = await this.isBiometricAvailable();
-      if (!biometricCheck.available) {
-        return { success: false, message: 'Biometric authentication is not available on this device' };
-      }
-
-      // Register biometric credential
-      const biometricResult = await this.registerBiometricCredential('');
-      if (!biometricResult.success) {
-        return biometricResult;
-      }
-
-      return { success: true, message: 'Biometric login enabled successfully' };
-    } catch (error) {
-      return { success: false, message: 'Failed to enable biometric login' };
-    }
-  }
-
-  async getBiometricStatus(): Promise<{ enabled: boolean }> {
-    try {
-      const response = await this.getProfile();
-      return { enabled: response.data.biometric_enabled || false };
-    } catch (error) {
-      return { enabled: false };
-    }
-  }
-
-  async isBiometricEnabledLocally(): Promise<boolean> {
-    try {
-      const enabled = await Storage.getItem('biometric_enabled');
-      return enabled === 'true';
-    } catch (error) {
-      return false;
-    }
+  logout(): void {
+    this.clearTokens();
   }
 
   // Utility methods

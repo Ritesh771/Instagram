@@ -205,6 +205,36 @@ class ApiService {
     return this.api.get('/auth/profile/');
   }
 
+  // Follow API Methods
+  async followUser(userId: number): Promise<AxiosResponse<any>> {
+    return this.api.post(`/users/${userId}/follow/`);
+  }
+
+  async unfollowUser(userId: number): Promise<AxiosResponse<any>> {
+    return this.api.post(`/users/${userId}/unfollow/`);
+  }
+
+  async getFollowers(userId: number): Promise<AxiosResponse<User[]>> {
+    return this.api.get(`/users/${userId}/followers/`);
+  }
+
+  async getFollowing(userId: number): Promise<AxiosResponse<User[]>> {
+    return this.api.get(`/users/${userId}/following/`);
+  }
+
+  async checkFollowStatus(userId: number): Promise<AxiosResponse<{ is_following: boolean; is_self: boolean }>> {
+    return this.api.get(`/users/${userId}/follow-status/`);
+  }
+
+  // Search API Methods
+  async searchUsers(query: string): Promise<AxiosResponse<User[]>> {
+    return this.api.get(`/users/?search=${encodeURIComponent(query)}`);
+  }
+
+  async getUserById(userId: number): Promise<AxiosResponse<User>> {
+    return this.api.get(`/users/${userId}/`);
+  }
+
   // Utility methods
   isAuthenticated(): boolean {
     return !!this.getAccessToken();

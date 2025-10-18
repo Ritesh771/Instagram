@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { View, StyleSheet, Animated } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useAuth } from '@/context/AuthContext';
 
 // Import screens
 import FeedScreen from "@/screens/FeedScreen";
@@ -12,6 +13,8 @@ import ProfileScreen from "@/screens/ProfileScreen";
 const Tab = createBottomTabNavigator();
 
 const TabNavigator: React.FC = () => {
+  const { user } = useAuth();
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -65,6 +68,7 @@ const TabNavigator: React.FC = () => {
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
+        initialParams={{ userId: user?.id }}
         options={{
           tabBarIcon: ({ focused, color, size }) => (
             <Ionicons

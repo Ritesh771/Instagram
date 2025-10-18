@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import * as ScreenCapture from 'expo-screen-capture';
 import { AuthProvider } from '@/context/AuthContext';
 import { PostsProvider } from '@/context/PostsContext';
+import { FollowProvider } from '@/context/FollowContext';
 import AppNavigator from '@/navigation/AppNavigator';
 
 export default function App() {
@@ -19,8 +20,10 @@ export default function App() {
     <SafeAreaProvider>
       <AuthProvider>
         <PostsProvider>
-          <AppNavigator />
-          <StatusBar style="auto" />
+          <FollowProvider>
+            <AppNavigator />
+            <StatusBar style="auto" />
+          </FollowProvider>
         </PostsProvider>
       </AuthProvider>
     </SafeAreaProvider>

@@ -104,7 +104,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
 
   const handleGoToProfile = () => {
     // Navigate to the user's profile screen with their userId
-    navigation.navigate('Profile' as never, { userId: post.user.id } as never);
+    (navigation as any).navigate('UserProfile', { userId: post.user.id });
   };
 
   const formatTimestamp = (timestamp: string) => {

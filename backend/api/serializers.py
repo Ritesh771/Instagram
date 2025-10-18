@@ -5,11 +5,11 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from .models import User, Post, OTP, Like, Follow, FollowRequest, User, UserDevice
+from .models import User, Post, OTP, Like, Follow, FollowRequest, User, UserDevice, Notification, Comment
 
 class DeviceSerializer(serializers.ModelSerializer):
-    login_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
-    last_activity = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    login_time = serializers.DateTimeField(read_only=True)
+    last_activity = serializers.DateTimeField(read_only=True)
     class Meta:
         model = UserDevice
         fields = ['id', 'device_name', 'os', 'browser', 'ip_address', 'login_time', 'last_activity']
@@ -108,15 +108,21 @@ class ResetPasswordConfirmSerializer(serializers.Serializer):
         return attrs
 
 class UserSerializer(serializers.ModelSerializer):
+    profile_pic = serializers.ImageField(use_url=True, required=False)
+    followers_count = serializers.ReadOnlyField()
+    following_count = serializers.ReadOnlyField()
+    
     class Meta:
         model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_verified', 'two_factor_enabled', 'bio', 'profile_pic', 'biometric_enabled']
-        read_only_fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_verified']
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_verified', 'two_factor_enabled', 'bio', 'profile_pic', 'biometric_enabled', 'followers_count', 'following_count']
+        read_only_fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_verified', 'followers_count', 'following_count']
 
 class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     is_liked = serializers.SerializerMethodField()
     likes_count = serializers.ReadOnlyField()
+    image = serializers.ImageField(use_url=True)
+    
     class Meta:
         model = Post
         fields = ['id', 'user', 'image', 'caption', 'created_at', 'likes_count', 'is_liked']
@@ -131,3 +137,23 @@ class FollowRequestSerializer(serializers.ModelSerializer):
         model = FollowRequest
         fields = ['id', 'requester', 'created_at']
         read_only_fields = ['id', 'requester', 'created_at']
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    actor = UserSerializer(read_only=True)
+    post = PostSerializer(read_only=True)
+    
+    class Meta:
+        model = Notification
+        fields = ['id', 'actor', 'notification_type', 'post', 'message', 'is_read', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    post = PostSerializer(read_only=True)
+    
+    class Meta:
+        model = Comment
+        fields = ['id', 'user', 'post', 'content', 'created_at']
+        read_only_fields = ['id', 'user', 'post', 'created_at']
