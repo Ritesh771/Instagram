@@ -60,7 +60,7 @@ jspm_packages/
 
 # Yarn Integrity file
 .yarn-integrity
-
+credentials.json
 # dotenv environment variable files
 .env
 .env.development.local

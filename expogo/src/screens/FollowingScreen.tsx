@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#ccc',
-    <marginTop:40></marginTop:40>
+    marginTop: 40,
   },
   headerText: {
     fontSize: 20,
