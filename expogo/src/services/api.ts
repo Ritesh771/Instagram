@@ -45,7 +45,7 @@ export interface ApiError {
 // API Configuration
 // IMPORTANT: Update this IP to match your backend server's IP address
 // To find your IP: Run 'ipconfig' on Windows or 'ifconfig' on Mac/Linux
-// Current IP: 192.168.2.4
+// Current IP: 192.168.31.225
 
 // Choose the appropriate URL based on your setup:
 const API_URLS = {
@@ -54,7 +54,7 @@ const API_URLS = {
   // For iOS Simulator
   IOS_SIMULATOR: 'http://localhost:8000/api',
   // For Physical Device (replace with your actual IP)
-  PHYSICAL_DEVICE: 'http://192.168.2.4:8000/api', // Updated to your actual IP
+  PHYSICAL_DEVICE: 'http://192.168.31.225:8000/api', // Updated to your current IP
   // For development testing
   LOCALHOST: 'http://localhost:8000/api',
 };

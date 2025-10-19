@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'corsheaders',
     # Local
     'api',
-    'user_agents',  # For device detection
+    # 'user_agents',  # For device detection - commented out as not installed
 ]
 INSTALLED_APPS += ['rest_framework_simplejwt.token_blacklist']
 MIDDLEWARE = [
@@ -50,8 +50,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'django_user_agents.middleware.UserAgentMiddleware',
-    'django_user_agents.middleware.UserAgentMiddleware',  # Add after SessionMiddleware
+    # 'django_user_agents.middleware.UserAgentMiddleware',  # Commented out as not installed
+    # 'django_user_agents.middleware.UserAgentMiddleware',  # Add after SessionMiddleware - commented out as not installed
 ]
 ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
