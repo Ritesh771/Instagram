@@ -30,7 +30,7 @@ from .views import (
     UnfollowUserView,
     FollowersListView,
     FollowingListView,
-    DeviceListView, LogoutDeviceView, LogoutAllDevicesView,  # Device management views
+    DeviceListView, LogoutDeviceView, LogoutAllDevicesView, CheckSessionValidityView,  # Device management views
     NotificationListView, MarkNotificationAsReadView, MarkAllNotificationsAsReadView,  # Notification views
 )
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -74,6 +74,7 @@ urlpatterns = [
     path('devices/', DeviceListView.as_view(), name='device-list'),
     path('devices/<int:device_id>/logout/', LogoutDeviceView.as_view(), name='logout-device'),
     path('devices/logout-all/', LogoutAllDevicesView.as_view(), name='logout-all-devices'),
+    path('devices/check-session/', CheckSessionValidityView.as_view(), name='check-session'),
     # notifications
     path('notifications/', NotificationListView.as_view(), name='notification-list'),
     path('notifications/<int:notification_id>/read/', MarkNotificationAsReadView.as_view(), name='mark-notification-read'),

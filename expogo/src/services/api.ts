@@ -31,6 +31,22 @@ export interface Post {
   is_liked: boolean;
 }
 
+export interface Device {
+  id: number;
+  device_name: string;
+  os: string;
+  browser: string;
+  ip_address: string;
+  login_time: string;
+  last_activity: string;
+}
+
+export interface FollowRequest {
+  id: number;
+  requester: User;
+  created_at: string;
+}
+
 export interface AuthResponse {
   access: string;
   refresh: string;

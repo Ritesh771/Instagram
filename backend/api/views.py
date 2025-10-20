@@ -4,6 +4,7 @@ import json
 import base64
 import hashlib
 import secrets
+from datetime import timedelta
 
 from django.utils import timezone
 from django.core.mail import send_mail
@@ -19,7 +20,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import User, Post, OTP, Like, Follow, FollowRequest, UserDevice, Notification
+from .models import User, Post, OTP, Like, Follow, FollowRequest, UserDevice, Notification, Comment
 from .serializers import (
     RegisterSerializer,
     VerifyOTPSerializer,
@@ -245,7 +246,7 @@ class LoginView(APIView):
         from rest_framework_simplejwt.tokens import RefreshToken
         refresh = RefreshToken.for_user(user)
         
-        # Create device record
+        # Create device record with refresh token
         user_agent = request.META.get('HTTP_USER_AGENT', 'Unknown')
         ip_address = get_client_ip(request)
         device_info = parse_user_agent(user_agent)
@@ -256,6 +257,7 @@ class LoginView(APIView):
             os=device_info['os'],
             browser=device_info['browser'],
             ip_address=ip_address,
+            refresh_token=str(refresh),  # Store refresh token
         )
         
         return Response({
@@ -309,7 +311,7 @@ class Verify2FAView(APIView):
         from rest_framework_simplejwt.tokens import RefreshToken
         refresh = RefreshToken.for_user(user)
         
-        # Create device record
+        # Create device record with refresh token
         user_agent = request.META.get('HTTP_USER_AGENT', 'Unknown')
         ip_address = get_client_ip(request)
         device_info = parse_user_agent(user_agent)
@@ -320,6 +322,7 @@ class Verify2FAView(APIView):
             os=device_info['os'],
             browser=device_info['browser'],
             ip_address=ip_address,
+            refresh_token=str(refresh),  # Store refresh token
         )
         
         return Response({
@@ -429,10 +432,37 @@ class UserListView(generics.ListAPIView):
 
 
 class PostListCreateView(generics.ListCreateAPIView):
-    queryset = Post.objects.select_related('user').all()
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        """
+        Filter posts based on privacy settings:
+        - Show all posts from public accounts
+        - Show posts from private accounts only if the user follows them
+        - Always show the user's own posts
+        """
+        user = self.request.user
+        
+        if not user.is_authenticated:
+            # For unauthenticated users, only show posts from public accounts
+            return Post.objects.select_related('user').filter(user__is_private=False).order_by('-created_at')
+        
+        # Get list of users the current user is following
+        following_ids = Follow.objects.filter(follower=user).values_list('followed_id', flat=True)
+        
+        # Build query:
+        # 1. User's own posts
+        # 2. Posts from public accounts
+        # 3. Posts from private accounts the user follows
+        queryset = Post.objects.select_related('user').filter(
+            Q(user=user) |  # Own posts
+            Q(user__is_private=False) |  # Public account posts
+            Q(user__id__in=following_ids)  # Posts from followed private accounts
+        ).distinct().order_by('-created_at')
+        
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -463,6 +493,14 @@ class LikePostView(APIView):
             post = Post.objects.get(id=post_id)
         except Post.DoesNotExist:
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user can access this post (privacy check)
+        if post.user != request.user:  # Not own post
+            if post.user.is_private:  # Post owner has private account
+                # Check if user follows the post owner
+                if not Follow.objects.filter(follower=request.user, followed=post.user).exists():
+                    return Response({'error': 'You cannot like posts from private accounts you do not follow'}, 
+                                    status=status.HTTP_403_FORBIDDEN)
         
         like, created = Like.objects.get_or_create(user=request.user, post=post)
         if created:
@@ -1048,6 +1086,14 @@ class CommentPostView(APIView):
         except Post.DoesNotExist:
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
         
+        # Check if user can access this post (privacy check)
+        if post.user != request.user:  # Not own post
+            if post.user.is_private:  # Post owner has private account
+                # Check if user follows the post owner
+                if not Follow.objects.filter(follower=request.user, followed=post.user).exists():
+                    return Response({'error': 'You cannot comment on posts from private accounts you do not follow'}, 
+                                    status=status.HTTP_403_FORBIDDEN)
+        
         content = request.data.get('content', '').strip()
         if not content:
             return Response({'error': 'Content is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1122,22 +1168,41 @@ class DeviceListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return UserDevice.objects.filter(user=self.request.user, is_active=True)
+        queryset = UserDevice.objects.filter(user=self.request.user, is_active=True)
+        print(f"DeviceListView: User {self.request.user.username} has {queryset.count()} active devices")
+        for device in queryset:
+            print(f"  - Device {device.id}: {device.device_name} (Token: {device.refresh_token[:20] if device.refresh_token else 'None'}...)")
+        return queryset
 
 
 class LogoutDeviceView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request, device_id):
+        print(f"LogoutDeviceView: User {request.user.username} attempting to logout device {device_id}")
         try:
             device = UserDevice.objects.get(id=device_id, user=request.user)
+            print(f"LogoutDeviceView: Found device: {device.device_name}")
         except UserDevice.DoesNotExist:
+            print(f"LogoutDeviceView: Device {device_id} not found")
             return Response({'error': 'Device not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        # Don't allow logging out current device
-        # We can identify current device by session or token if needed
+        # Blacklist the refresh token if it exists
+        if device.refresh_token:
+            try:
+                from rest_framework_simplejwt.tokens import RefreshToken
+                token = RefreshToken(device.refresh_token)
+                token.blacklist()  # Blacklist the token
+                print(f"LogoutDeviceView: Successfully blacklisted token for device {device_id}")
+            except Exception as e:
+                print(f"Error blacklisting token: {e}")
+                # Continue even if blacklisting fails
+        
+        # Mark device as inactive
         device.is_active = False
         device.save()
+        print(f"LogoutDeviceView: Device {device_id} marked as inactive")
+        
         return Response({'detail': 'Device logged out successfully'})
 
 
@@ -1145,9 +1210,83 @@ class LogoutAllDevicesView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        # Log out all devices except current one
-        UserDevice.objects.filter(user=request.user).update(is_active=False)
-        return Response({'detail': 'All devices logged out successfully'})
+        """
+        Logout from ALL OTHER devices (excluding current device).
+        This keeps the current device active while logging out all other sessions.
+        """
+        # Get the current refresh token to identify current device
+        current_refresh_token = request.data.get('current_refresh_token')
+        
+        if not current_refresh_token:
+            # If no current token provided, logout from ALL devices
+            devices = UserDevice.objects.filter(user=request.user, is_active=True)
+        else:
+            # Exclude the current device
+            devices = UserDevice.objects.filter(
+                user=request.user, 
+                is_active=True
+            ).exclude(refresh_token=current_refresh_token)
+        
+        # Blacklist all refresh tokens for other devices
+        for device in devices:
+            if device.refresh_token:
+                try:
+                    from rest_framework_simplejwt.tokens import RefreshToken
+                    token = RefreshToken(device.refresh_token)
+                    token.blacklist()  # Blacklist the token
+                    print(f"LogoutAllDevicesView: Blacklisted token for device {device.id}")
+                except Exception as e:
+                    print(f"Error blacklisting token for device {device.id}: {e}")
+                    # Continue even if blacklisting fails
+        
+        # Mark all other devices as inactive
+        count = devices.update(is_active=False)
+        print(f"LogoutAllDevicesView: Logged out {count} devices (excluding current)")
+        
+        return Response({
+            'detail': f'Successfully logged out from {count} other device(s)',
+            'logged_out_count': count
+        })
+
+
+class CheckSessionValidityView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """
+        Check if the current session/device is still valid.
+        Returns 200 if valid, 401 if session has been invalidated.
+        """
+        # Get the current refresh token from the request
+        refresh_token = request.data.get('refresh_token') or request.META.get('HTTP_X_REFRESH_TOKEN')
+        
+        if not refresh_token:
+            # Try to find any active device for this user
+            active_device = UserDevice.objects.filter(
+                user=request.user,
+                is_active=True
+            ).first()
+            
+            if not active_device:
+                return Response(
+                    {'valid': False, 'detail': 'No active session found'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            return Response({'valid': True, 'detail': 'Session is valid'})
+        
+        # Check if this specific refresh token is still active
+        try:
+            device = UserDevice.objects.get(
+                user=request.user,
+                refresh_token=refresh_token,
+                is_active=True
+            )
+            return Response({'valid': True, 'detail': 'Session is valid'})
+        except UserDevice.DoesNotExist:
+            return Response(
+                {'valid': False, 'detail': 'Session has been invalidated'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
 
 
 class NotificationListView(generics.ListAPIView):

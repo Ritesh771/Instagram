@@ -1,14 +1,34 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, PlusSquare, User, LogOut, Camera } from 'lucide-react';
+import { Home, PlusSquare, User, LogOut, Camera, Bell, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
+import apiService from '@/services/api';
 
 const Navbar: React.FC = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   const isActive = (path: string) => location.pathname === path;
+
+  useEffect(() => {
+    const fetchPendingRequests = async () => {
+      try {
+        const response = await apiService.getPendingFollowRequests();
+        setPendingRequestsCount(response.data.length);
+      } catch (error) {
+        console.error('Error fetching pending requests:', error);
+      }
+    };
+
+    if (user) {
+      fetchPendingRequests();
+      // Poll every 30 seconds for updates
+      const interval = setInterval(fetchPendingRequests, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
 
   if (!user) return null;
 
@@ -44,6 +64,16 @@ const Navbar: React.FC = () => {
           </Link>
 
           <Link
+            to="/search"
+            className={`flex items-center space-x-2 rounded-lg px-3 py-2 transition-all hover:bg-secondary ${
+              isActive('/search') ? 'bg-secondary text-primary' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Search className="h-5 w-5" />
+            <span className="hidden sm:inline">Search</span>
+          </Link>
+
+          <Link
             to={`/profile/${user.username}`}
             className={`flex items-center space-x-2 rounded-lg px-3 py-2 transition-all hover:bg-secondary ${
               isActive(`/profile/${user.username}`) ? 'bg-secondary text-primary' : 'text-muted-foreground hover:text-foreground'
@@ -51,6 +81,21 @@ const Navbar: React.FC = () => {
           >
             <User className="h-5 w-5" />
             <span className="hidden sm:inline">Profile</span>
+          </Link>
+
+          <Link
+            to="/follow-requests"
+            className={`relative flex items-center space-x-2 rounded-lg px-3 py-2 transition-all hover:bg-secondary ${
+              isActive('/follow-requests') ? 'bg-secondary text-primary' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Bell className="h-5 w-5" />
+            {pendingRequestsCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
+                {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
+              </span>
+            )}
+            <span className="hidden sm:inline">Requests</span>
           </Link>
 
           {/* User info and logout */}

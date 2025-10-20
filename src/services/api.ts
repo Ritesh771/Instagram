@@ -13,6 +13,9 @@ export interface User {
   biometric_enabled?: boolean;
   bio?: string;
   profile_pic?: string;
+  followers_count?: number;
+  following_count?: number;
+  is_private?: boolean;
 }
 
 export interface Post {
@@ -23,6 +26,22 @@ export interface Post {
   created_at: string;
   likes_count: number;
   is_liked: boolean;
+}
+
+export interface FollowRequest {
+  id: number;
+  requester: User;
+  created_at: string;
+}
+
+export interface Device {
+  id: number;
+  device_name: string;
+  os: string;
+  browser: string;
+  ip_address: string;
+  login_time: string;
+  last_activity: string;
 }
 
 export interface AuthResponse {
@@ -206,11 +225,11 @@ class ApiService {
   }
 
   // Follow API Methods
-  async followUser(userId: number): Promise<AxiosResponse<any>> {
+  async followUser(userId: number): Promise<AxiosResponse<{ detail?: string; followed?: boolean; error?: string }>> {
     return this.api.post(`/users/${userId}/follow/`);
   }
 
-  async unfollowUser(userId: number): Promise<AxiosResponse<any>> {
+  async unfollowUser(userId: number): Promise<AxiosResponse<{ detail: string }>> {
     return this.api.post(`/users/${userId}/unfollow/`);
   }
 
@@ -222,8 +241,50 @@ class ApiService {
     return this.api.get(`/users/${userId}/following/`);
   }
 
-  async checkFollowStatus(userId: number): Promise<AxiosResponse<{ is_following: boolean; is_self: boolean }>> {
+  async checkFollowStatus(userId: number): Promise<AxiosResponse<{ status: string }>> {
     return this.api.get(`/users/${userId}/follow-status/`);
+  }
+
+  async getUserPosts(userId: number): Promise<AxiosResponse<Post[]>> {
+    return this.api.get(`/users/${userId}/posts/`);
+  }
+
+  // Follow Request API Methods
+  async getPendingFollowRequests(): Promise<AxiosResponse<FollowRequest[]>> {
+    return this.api.get('/follow-requests/pending/');
+  }
+
+  async acceptFollowRequest(requesterId: number): Promise<AxiosResponse<{ detail: string }>> {
+    return this.api.post(`/follow-requests/accept/${requesterId}/`);
+  }
+
+  async rejectFollowRequest(requesterId: number): Promise<AxiosResponse<{ detail: string }>> {
+    return this.api.post(`/follow-requests/reject/${requesterId}/`);
+  }
+
+  // Device Management API Methods
+  async getDevices(): Promise<AxiosResponse<Device[]>> {
+    return this.api.get('/devices/');
+  }
+
+  async logoutDevice(deviceId: number): Promise<AxiosResponse<{ detail: string }>> {
+    return this.api.delete(`/devices/${deviceId}/logout/`);
+  }
+
+  async logoutAllDevices(): Promise<AxiosResponse<{ detail: string; logged_out_count?: number }>> {
+    const currentRefreshToken = this.getRefreshToken();
+    return this.api.post('/devices/logout-all/', {
+      current_refresh_token: currentRefreshToken,
+    });
+  }
+
+  async checkSessionValidity(): Promise<AxiosResponse<{ valid: boolean; detail: string }>> {
+    const refreshToken = this.getRefreshToken();
+    return this.api.get('/devices/check-session/', {
+      headers: {
+        'X-Refresh-Token': refreshToken || '',
+      },
+    });
   }
 
   // Search API Methods
@@ -240,8 +301,17 @@ class ApiService {
     return !!this.getAccessToken();
   }
 
-  logout(): void {
-    this.clearTokens();
+  async logout(): Promise<void> {
+    try {
+      // Call backend to invalidate all sessions
+      await this.logoutAllDevices();
+    } catch (error) {
+      console.error('Error during logout:', error);
+      // Continue with logout even if API call fails
+    } finally {
+      // Always clear local tokens
+      this.clearTokens();
+    }
   }
 
   // Error handling

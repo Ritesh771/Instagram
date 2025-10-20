@@ -164,8 +164,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    apiService.logout();
+  const logout = async () => {
+    await apiService.logout();
     setUser(null);
   };
 
