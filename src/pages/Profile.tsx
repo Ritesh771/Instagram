@@ -11,7 +11,8 @@ import { usePosts } from '@/context/PostsContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import Navbar from '@/components/Navbar';
-import apiService from '@/services/api';
+import DeviceManagement from '@/components/DeviceManagement';
+import apiService, { Post } from '@/services/api';
 
 // Define the UserProfile interface with all necessary properties
 interface UserProfile {
@@ -41,8 +42,9 @@ const Profile: React.FC = () => {
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [isFollowing, setIsFollowing] = useState(false);
+  const [followStatus, setFollowStatus] = useState<'following' | 'requested' | 'not_following' | 'self'>('not_following');
   const [loading, setLoading] = useState(true);
+  const [userPosts, setUserPosts] = useState<Post[]>([]);
 
   // Fetch user profile and follow counts
   useEffect(() => {
@@ -50,31 +52,44 @@ const Profile: React.FC = () => {
       try {
         setLoading(true);
         
-        // In a real implementation, you would fetch the user profile by username
-        // For now, we'll use the current user's data
-        if (user) {
-          setUserProfile({
-            id: user.id,
-            username: user.username,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            email: user.email,
-            is_verified: user.is_verified,
-            two_factor_enabled: user.two_factor_enabled,
-            biometric_enabled: user.biometric_enabled,
-            bio: user.bio,
-            profile_pic: user.profile_pic
-          });
-          setFollowersCount(0); // Placeholder - in a real app, fetch from API
-          setFollowingCount(0); // Placeholder - in a real app, fetch from API
-          
-          // Check if current user is following this profile (if not own profile)
-          if (user.username !== username) {
-            // Fetch the actual user profile by username
-            // This is a placeholder - in a real implementation you would have an API endpoint to get user by username
-            const response = await apiService.searchUsers(username || '');
-            if (response.data.length > 0) {
-              const targetUser = response.data[0];
+        // Fetch profile by username
+        if (user && username) {
+          // Check if viewing own profile
+          if (user.username === username) {
+            setUserProfile({
+              id: user.id,
+              username: user.username,
+              first_name: user.first_name,
+              last_name: user.last_name,
+              email: user.email,
+              is_verified: user.is_verified,
+              two_factor_enabled: user.two_factor_enabled,
+              biometric_enabled: user.biometric_enabled,
+              bio: user.bio,
+              profile_pic: user.profile_pic
+            });
+            setFollowStatus('self');
+            
+            // Fetch followers and following counts
+            try {
+              const [followersRes, followingRes] = await Promise.all([
+                apiService.getFollowers(user.id),
+                apiService.getFollowing(user.id)
+              ]);
+              setFollowersCount(followersRes.data.length);
+              setFollowingCount(followingRes.data.length);
+            } catch (err) {
+              console.error('Error fetching follow counts:', err);
+            }
+            
+            // Fetch own posts
+            const postsFromContext = posts.filter(post => post.user.username === username);
+            setUserPosts(postsFromContext);
+          } else {
+            // Viewing another user's profile - search by username
+            const searchResponse = await apiService.searchUsers(username);
+            if (searchResponse.data.length > 0) {
+              const targetUser = searchResponse.data[0];
               setUserProfile({
                 id: targetUser.id,
                 username: targetUser.username,
@@ -89,31 +104,23 @@ const Profile: React.FC = () => {
               });
               
               // Fetch followers and following counts
-              const followersResponse = await apiService.getFollowers(targetUser.id);
-              const followingResponse = await apiService.getFollowing(targetUser.id);
-              setFollowersCount(followersResponse.data.length);
-              setFollowingCount(followingResponse.data.length);
+              try {
+                const [followersRes, followingRes, statusRes] = await Promise.all([
+                  apiService.getFollowers(targetUser.id),
+                  apiService.getFollowing(targetUser.id),
+                  apiService.checkFollowStatus(targetUser.id)
+                ]);
+                setFollowersCount(followersRes.data.length);
+                setFollowingCount(followingRes.data.length);
+                setFollowStatus(statusRes.data.status as 'following' | 'requested' | 'not_following');
+              } catch (err) {
+                console.error('Error fetching follow data:', err);
+              }
               
-              // Check if current user is following this profile
-              const followStatusResponse = await apiService.checkFollowStatus(targetUser.id);
-              setIsFollowing(followStatusResponse.data.is_following);
+              // Fetch user's posts from context
+              const targetUserPosts = posts.filter(post => post.user.username === username);
+              setUserPosts(targetUserPosts);
             }
-          } else {
-            // Own profile
-            setUserProfile({
-              id: user.id,
-              username: user.username,
-              first_name: user.first_name,
-              last_name: user.last_name,
-              email: user.email,
-              is_verified: user.is_verified,
-              two_factor_enabled: user.two_factor_enabled,
-              biometric_enabled: user.biometric_enabled,
-              bio: user.bio,
-              profile_pic: user.profile_pic
-            });
-            setFollowersCount(0); // Placeholder - in a real app, fetch from API
-            setFollowingCount(0); // Placeholder - in a real app, fetch from API
           }
         }
       } catch (error) {
@@ -129,15 +136,14 @@ const Profile: React.FC = () => {
     };
 
     fetchUserProfile();
-  }, [username, user]);
+  }, [username, user, posts, toast]);
 
-  const userPosts = posts.filter(post => post.user.username === username);
   const isOwnProfile = user?.username === username;
   
-  // Determine if we can show posts based on the new can_view_posts flag or fallback logic
+  // Determine if we can show posts based on privacy and follow status
   const canViewPosts = userProfile?.can_view_posts !== undefined 
     ? userProfile.can_view_posts 
-    : (!userProfile?.is_private || isOwnProfile || isFollowing);
+    : (!userProfile?.is_private || isOwnProfile || followStatus === 'following');
 
   const handleToggle2FA = async (enabled: boolean) => {
     if (!isOwnProfile) return;
@@ -187,6 +193,54 @@ const Profile: React.FC = () => {
   const handleCancelEdit = () => {
     setEditBio(user?.bio || '');
     setIsEditing(false);
+  };
+
+  const handleFollowToggle = async () => {
+    if (!userProfile || isOwnProfile) return;
+
+    try {
+      if (followStatus === 'following') {
+        // Unfollow
+        await apiService.unfollowUser(userProfile.id);
+        setFollowStatus('not_following');
+        setFollowersCount(prev => Math.max(0, prev - 1));
+        toast({
+          title: 'Unfollowed',
+          description: `You have unfollowed @${userProfile.username}`,
+        });
+      } else if (followStatus === 'requested') {
+        // Cancel request
+        await apiService.unfollowUser(userProfile.id);
+        setFollowStatus('not_following');
+        toast({
+          title: 'Request Cancelled',
+          description: 'Follow request cancelled',
+        });
+      } else {
+        // Follow or send request
+        const response = await apiService.followUser(userProfile.id);
+        const newStatus = response.data.detail === 'Follow request sent' ? 'requested' : 'following';
+        setFollowStatus(newStatus as 'following' | 'requested');
+        
+        if (newStatus === 'following') {
+          setFollowersCount(prev => prev + 1);
+        }
+        
+        toast({
+          title: newStatus === 'requested' ? 'Request Sent' : 'Following',
+          description: newStatus === 'requested' 
+            ? `Follow request sent to @${userProfile.username}` 
+            : `You are now following @${userProfile.username}`,
+        });
+      }
+    } catch (error) {
+      console.error('Error toggling follow:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update follow status',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleToggleBiometric = async (enabled: boolean) => {
@@ -352,14 +406,14 @@ const Profile: React.FC = () => {
                     <p className="text-xl font-bold text-foreground">{userPosts.length}</p>
                     <p className="text-sm text-muted-foreground">Posts</p>
                   </div>
-                  <div className="text-center">
+                  <Link to={`/followers/${userProfile?.id}`} className="text-center cursor-pointer hover:opacity-75">
                     <p className="text-xl font-bold text-foreground">{followersCount}</p>
                     <p className="text-sm text-muted-foreground">Followers</p>
-                  </div>
-                  <div className="text-center">
+                  </Link>
+                  <Link to={`/following/${userProfile?.id}`} className="text-center cursor-pointer hover:opacity-75">
                     <p className="text-xl font-bold text-foreground">{followingCount}</p>
                     <p className="text-sm text-muted-foreground">Following</p>
-                  </div>
+                  </Link>
                 </div>
 
                 {isOwnProfile && (
@@ -374,20 +428,18 @@ const Profile: React.FC = () => {
                 )}
                 
                 {/* Follow button for other users */}
-                {!isOwnProfile && (
+                {!isOwnProfile && followStatus !== 'self' && (
                   <Button 
-                    className={isFollowing ? "bg-white text-black border border-gray-300 hover:bg-gray-100" : "bg-blue-500 text-white hover:bg-blue-600"}
-                    onClick={() => {
-                      // In a real implementation, you would handle follow/unfollow here
-                      setIsFollowing(!isFollowing);
-                      if (isFollowing) {
-                        setFollowersCount(prev => Math.max(0, prev - 1));
-                      } else {
-                        setFollowersCount(prev => prev + 1);
-                      }
-                    }}
+                    className={
+                      followStatus === 'following' 
+                        ? "bg-white text-black border border-gray-300 hover:bg-gray-100" 
+                        : followStatus === 'requested'
+                        ? "bg-gray-500 text-white hover:bg-gray-600"
+                        : "bg-blue-500 text-white hover:bg-blue-600"
+                    }
+                    onClick={handleFollowToggle}
                   >
-                    {isFollowing ? 'Following' : 'Follow'}
+                    {followStatus === 'following' ? 'Following' : followStatus === 'requested' ? 'Requested' : 'Follow'}
                   </Button>
                 )}
               </div>
@@ -471,6 +523,13 @@ const Profile: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* Device Management - Only for own profile */}
+        {isOwnProfile && (
+          <div className="mb-8">
+            <DeviceManagement />
+          </div>
         )}
 
         {/* Posts Grid */}

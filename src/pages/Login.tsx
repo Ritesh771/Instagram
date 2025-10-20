@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import BiometricLogin from '@/components/BiometricLogin';
 
@@ -24,7 +24,22 @@ const Login: React.FC = () => {
 
   const { login, verify2FA, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+
+  // Show session invalidation message if redirected from session monitor
+  useEffect(() => {
+    const state = location.state as { message?: string };
+    if (state?.message) {
+      toast({
+        title: 'Session Ended',
+        description: state.message,
+        variant: 'destructive',
+      });
+      // Clear the state
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, toast, navigate]);
 
   // Redirect if already logged in
   useEffect(() => {

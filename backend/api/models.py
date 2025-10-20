@@ -98,6 +98,7 @@ class FollowRequest(models.Model):
 class UserDevice(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='devices')
     session_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)  # Unique per login
+    refresh_token = models.CharField(max_length=500, blank=True, null=True)  # Store refresh token for blacklisting
     device_name = models.CharField(max_length=255)  # e.g., "Windows Chrome"
     os = models.CharField(max_length=100)  # e.g., "Windows"
     browser = models.CharField(max_length=100)  # e.g., "Chrome"

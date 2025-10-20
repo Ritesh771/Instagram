@@ -190,6 +190,7 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
     'x-platform',  # Added for platform identification
+    'x-refresh-token',  # Added for session validation
     'access-control-allow-origin',
     'access-control-allow-headers',
     'access-control-allow-methods',
