@@ -836,10 +836,39 @@ class BiometricAuthenticateView(APIView):
             bio_cred.last_used_at = timezone.now()
             bio_cred.save(update_fields=['last_used_at'])
 
-            # Return JWT tokens
+            # Get device information
+            user_agent = request.META.get('HTTP_USER_AGENT', 'Unknown')
+            ip_address = get_client_ip(request)
+            device_info = parse_user_agent(user_agent)
+            
+            # Deactivate any existing non-biometric sessions for this browser/IP
+            UserDevice.objects.filter(
+                user=user,
+                browser=device_info['browser'],
+                ip_address=ip_address,
+                is_active=True
+            ).exclude(device_name__icontains='Biometric').update(is_active=False)
+
+            # Generate new tokens with extended lifetime for biometric session
             from rest_framework_simplejwt.tokens import RefreshToken
             refresh = RefreshToken.for_user(user)
-            return Response({
+            # Add biometric flag to token
+            refresh['is_biometric'] = True
+            # Extend token lifetime for biometric sessions
+            refresh.set_exp(lifetime=timedelta(days=30))  # Longer lifetime for biometric sessions
+
+            # Create new biometric device record
+            device = UserDevice.objects.create(
+                user=user,
+                device_name=f"Biometric {device_info['device_name']}",
+                os=device_info['os'],
+                browser=device_info['browser'],
+                ip_address=ip_address,
+                refresh_token=str(refresh),
+                is_active=True
+            )
+
+            response_data = {
                 'access': str(refresh.access_token),
                 'refresh': str(refresh),
                 'user': {
@@ -853,8 +882,13 @@ class BiometricAuthenticateView(APIView):
                     'biometric_enabled': user.biometric_enabled,
                     'bio': user.bio,
                     'profile_pic': user.profile_pic.url if user.profile_pic else None,
-                }
-            })
+                },
+                'device_id': device.id
+            }
+
+            response = Response(response_data)
+            response['X-Biometric-Session'] = 'true'
+            return response
 
         except Exception as e:
             print(f"Biometric authentication error: {e}")
@@ -1216,24 +1250,38 @@ class LogoutAllDevicesView(APIView):
         """
         # Get the current refresh token to identify current device
         current_refresh_token = request.data.get('current_refresh_token')
+        is_biometric = request.headers.get('X-Biometric-Session', '').lower() == 'true'
         
         if not current_refresh_token:
-            # If no current token provided, logout from ALL devices
-            devices = UserDevice.objects.filter(user=request.user, is_active=True)
+            # If no current token provided, logout from ALL devices except biometric devices
+            devices = UserDevice.objects.filter(
+                user=request.user, 
+                is_active=True
+            ).exclude(device_name__icontains='Biometric')
         else:
-            # Exclude the current device
+            # Get the current device's info
+            user_agent = request.META.get('HTTP_USER_AGENT', 'Unknown')
+            ip_address = get_client_ip(request)
+            device_info = parse_user_agent(user_agent)
+            
+            # Exclude the current device and any biometric devices if this is a biometric session
             devices = UserDevice.objects.filter(
                 user=request.user, 
                 is_active=True
             ).exclude(refresh_token=current_refresh_token)
+            
+            if is_biometric:
+                devices = devices.exclude(device_name__icontains='Biometric')
         
         # Blacklist all refresh tokens for other devices
+        blacklisted_count = 0
         for device in devices:
             if device.refresh_token:
                 try:
                     from rest_framework_simplejwt.tokens import RefreshToken
                     token = RefreshToken(device.refresh_token)
                     token.blacklist()  # Blacklist the token
+                    blacklisted_count += 1
                     print(f"LogoutAllDevicesView: Blacklisted token for device {device.id}")
                 except Exception as e:
                     print(f"Error blacklisting token for device {device.id}: {e}")
@@ -1241,11 +1289,12 @@ class LogoutAllDevicesView(APIView):
         
         # Mark all other devices as inactive
         count = devices.update(is_active=False)
-        print(f"LogoutAllDevicesView: Logged out {count} devices (excluding current)")
+        print(f"LogoutAllDevicesView: Logged out {count} devices (excluding current and biometric)")
         
         return Response({
             'detail': f'Successfully logged out from {count} other device(s)',
-            'logged_out_count': count
+            'logged_out_count': count,
+            'blacklisted_count': blacklisted_count
         })
 
 
@@ -1317,3 +1366,4 @@ class MarkAllNotificationsAsReadView(APIView):
     def post(self, request):
         Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
         return Response({'detail': 'All notifications marked as read'})
+
