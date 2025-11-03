@@ -76,19 +76,50 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           const savedUser = await Storage.getItem('user');
           
           if (savedUser) {
-            const userData = JSON.parse(savedUser);
+            let userData = JSON.parse(savedUser);
             setUser(userData);
             
-            // Always check if biometric lock should be applied on app start
-            // This ensures biometric lock works even on fresh app launch
-            if (userData.biometric_enabled) {
-              setTimeout(() => {
-                checkBiometricLockRequirement();
-              }, 500); // Small delay to ensure everything is initialized
+            // Check biometric lock requirement before setting loading to false
+            // This ensures the lock screen shows immediately on app start if biometric is enabled
+            const biometricCheck = await apiService.isBiometricAvailable();
+            console.log('Biometric availability check on app start:', biometricCheck);
+            
+            if (biometricCheck.available) {
+              // If biometrics are available, ensure biometric is enabled for app lock
+              if (!userData.biometric_enabled) {
+                console.log('Biometrics available but not enabled, enabling automatically for app lock');
+                try {
+                  // Try to update profile, but don't fail if it doesn't work
+                  await apiService.updateProfile({ biometric_enabled: true });
+                  // Update local userData
+                  userData.biometric_enabled = true;
+                  // Update storage
+                  await Storage.setItem('user', JSON.stringify(userData));
+                } catch (error) {
+                  console.error('Failed to enable biometric automatically on app start:', error);
+                  // Still enable locally for this session
+                  userData.biometric_enabled = true;
+                }
+              }
+              
+              console.log('Setting biometric lock on app start');
+              setIsBiometricLocked(true);
+            } else {
+              console.log('Biometrics not available on device');
+              // If biometrics were enabled but no longer available, disable
+              if (userData.biometric_enabled) {
+                userData.biometric_enabled = false;
+                await Storage.setItem('user', JSON.stringify(userData));
+              }
+              setIsBiometricLocked(false);
             }
+            
+            // Update user state with any changes
+            setUser(userData);
           }
         }
       } catch (error) {
+        console.error('Error during auth check:', error);
         await apiService.logout();
       } finally {
         setIsLoading(false);
@@ -105,50 +136,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Only track when app truly goes to background (not just inactive)
         const backgroundTime = Date.now();
         setLastBackgroundTime(backgroundTime);
-      } else if (nextAppState === 'active' && user) {
-        // App came to foreground - check if we have a valid background time
-        if (lastBackgroundTime) {
-          const timeInBackground = Date.now() - lastBackgroundTime;
-          
-          // Trigger biometric lock immediately when app returns from background
-          // Only check if user has biometric enabled and biometric check is not temporarily disabled
-          if (user?.biometric_enabled && biometricCheckEnabled) {
-            // If biometric check is disabled, don't trigger
-            if (!biometricCheckEnabled) {
-              setLastBackgroundTime(null); // Reset to prevent accumulation
-              return;
-            }
-            
-            await checkBiometricLockRequirement();
-          } else {
-            // Reset background time to prevent accumulation
-            setLastBackgroundTime(null);
-          }
-        } else {
-          // No valid background time, but still check if biometric is enabled
-          // This handles cases where the app was closed and reopened
-          if (user?.biometric_enabled && biometricCheckEnabled) {
-            await checkBiometricLockRequirement();
-          }
-          setLastBackgroundTime(null);
+      } else if (nextAppState === 'active' && user && lastBackgroundTime) {
+        // App came to foreground from background - check if we need biometric lock
+        const timeInBackground = Date.now() - lastBackgroundTime;
+        
+        // Trigger biometric lock when app returns from background
+        if (user?.biometric_enabled && biometricCheckEnabled) {
+          console.log('App returned from background, checking biometric lock...');
+          await checkBiometricLockRequirement();
         }
+        
+        // Reset background time
+        setLastBackgroundTime(null);
       }
     };
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription.remove();
-  }, [user, lastBackgroundTime]);
+  }, [user, lastBackgroundTime, biometricCheckEnabled]);
 
   const checkBiometricLockRequirement = async () => {
     try {
+      console.log('Checking biometric lock requirement...');
       // Check if user has biometric authentication enabled
       if (user?.biometric_enabled) {
+        console.log('User has biometric enabled, checking device availability...');
         // Check if biometrics are available on device
         const biometricCheck = await apiService.isBiometricAvailable();
+        console.log('Biometric check result:', biometricCheck);
         
         if (biometricCheck.available) {
+          console.log('Biometrics available, locking app');
           setIsBiometricLocked(true);
         } else {
+          console.log('Biometrics not available on device');
           // Biometrics not available but user has it enabled - disable it
           if (user) {
             const updatedUser = { ...user, biometric_enabled: false };
@@ -158,9 +179,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setIsBiometricLocked(false);
         }
       } else {
+        console.log('User does not have biometric enabled');
         setIsBiometricLocked(false);
       }
     } catch (error) {
+      console.error('Error in checkBiometricLockRequirement:', error);
       setIsBiometricLocked(false);
     }
   };
@@ -192,6 +215,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(authData.user);
       await Storage.setItem('user', JSON.stringify(authData.user));
       
+      // Check if biometrics are available and enable app lock automatically
+      const biometricCheck = await apiService.isBiometricAvailable();
+      if (biometricCheck.available && !authData.user.biometric_enabled) {
+        console.log('Biometrics available, enabling app lock automatically');
+        try {
+          await updateProfile({ biometric_enabled: true });
+        } catch (error) {
+          console.error('Failed to enable biometric automatically:', error);
+        }
+      }
+      
       // Unlock biometric lock on successful password login
       setIsBiometricLocked(false);
       
@@ -220,6 +254,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await apiService.saveTokens(response.data.access, response.data.refresh);
       setUser(response.data.user);
       await Storage.setItem('user', JSON.stringify(response.data.user));
+      
+      // Check if biometrics are available and enable app lock automatically
+      const biometricCheck = await apiService.isBiometricAvailable();
+      if (biometricCheck.available && !response.data.user.biometric_enabled) {
+        console.log('Biometrics available, enabling app lock automatically');
+        try {
+          await updateProfile({ biometric_enabled: true });
+        } catch (error) {
+          console.error('Failed to enable biometric automatically:', error);
+        }
+      }
       
       // Clear pending OTP data on successful verification
       setPendingOtpData(null);
@@ -392,6 +437,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         await apiService.saveTokens(response.data.access, response.data.refresh);
         setUser(response.data.user);
         await Storage.setItem('user', JSON.stringify(response.data.user));
+        
+        // Check if biometrics are available and enable app lock automatically
+        const biometricCheck = await apiService.isBiometricAvailable();
+        if (biometricCheck.available && !response.data.user.biometric_enabled) {
+          console.log('Biometrics available, enabling app lock automatically');
+          try {
+            await updateProfile({ biometric_enabled: true });
+          } catch (error) {
+            console.error('Failed to enable biometric automatically:', error);
+          }
+        }
         
         // Clear registration state after successful verification
         setIsRegistrationInProgress(false);
