@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 
 const SettingsScreen: React.FC = () => {
-  const { user, logout, updateProfile, enableBiometricLogin, disableBiometricLogin, isBiometricAvailable } = useAuth();
+  const { user, logout, updateProfile, enableBiometricLogin, disableBiometricLogin, isBiometricAvailable, triggerBiometricCheck } = useAuth();
   const [isUpdating, setIsUpdating] = useState(false);
   const [isBiometricUpdating, setIsBiometricUpdating] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
@@ -108,6 +108,14 @@ const SettingsScreen: React.FC = () => {
               disabled={isBiometricUpdating || !biometricAvailable}
             />
           </View>
+          {user?.biometric_enabled && (
+            <TouchableOpacity
+              style={styles.testButton}
+              onPress={() => triggerBiometricCheck()}
+            >
+              <Text style={styles.testButtonText}>Test App Lock</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Logged-in Devices */}
@@ -157,6 +165,19 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
   cardSubtitle: { fontSize: 14, color: '#666', marginTop: 4 },
+  testButton: {
+    marginTop: 10,
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  testButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });
 
 export default SettingsScreen;

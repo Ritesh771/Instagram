@@ -61,7 +61,7 @@ export interface ApiError {
 // API Configuration
 // IMPORTANT: Update this IP to match your backend server's IP address
 // To find your IP: Run 'ipconfig' on Windows or 'ifconfig' on Mac/Linux
-// Current IP: 192.168.31.225
+// Current IP: 192.168.31.83
 
 // Choose the appropriate URL based on your setup:
 const API_URLS = {
@@ -70,7 +70,7 @@ const API_URLS = {
   // For iOS Simulator
   IOS_SIMULATOR: 'http://localhost:8000/api',
   // For Physical Device (replace with your actual IP)
-  PHYSICAL_DEVICE: 'http://192.168.31.225:8000/api', // Updated to your current IP
+  PHYSICAL_DEVICE: 'http://192.168.31.83:8000/api', // Updated to your current IP
   // For development testing
   LOCALHOST: 'http://localhost:8000/api',
 };
@@ -353,6 +353,89 @@ class ApiService {
       return {
         message: error.message || 'An unexpected error occurred'
       };
+    }
+  }
+
+  // Biometric authentication methods for React Native
+  async isBiometricAvailable(): Promise<{ available: boolean; types: string[] }> {
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+
+      const available = hasHardware && isEnrolled;
+      const types = supportedTypes.map(type => {
+        switch (type) {
+          case LocalAuthentication.AuthenticationType.FINGERPRINT:
+            return 'fingerprint';
+          case LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION:
+            return 'face';
+          case LocalAuthentication.AuthenticationType.IRIS:
+            return 'iris';
+          default:
+            return 'biometric';
+        }
+      });
+
+      console.log('Biometric availability:', { hasHardware, isEnrolled, supportedTypes, available, types });
+      return { available, types };
+    } catch (error) {
+      console.error('Error checking biometric availability:', error);
+      return { available: false, types: [] };
+    }
+  }
+
+  async authenticateWithBiometrics(): Promise<{ success: boolean; message?: string }> {
+    try {
+      console.log('Starting biometric authentication...');
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Authenticate to unlock the app',
+        fallbackLabel: 'Use password',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+
+      console.log('Biometric authentication result:', result);
+      if (result.success) {
+        return { success: true, message: 'Biometric authentication successful' };
+      } else {
+        return { success: false, message: result.error || 'Biometric authentication failed' };
+      }
+    } catch (error) {
+      console.error('Biometric authentication error:', error);
+      return { success: false, message: 'Biometric authentication failed' };
+    }
+  }
+
+  async registerBiometricCredential(username: string): Promise<{ success: boolean; message?: string }> {
+    // For React Native, biometric registration is handled by the OS
+    // We just need to enable it in the user profile
+    try {
+      const response = await this.api.patch('/auth/profile/', { biometric_enabled: true });
+      return { success: true, message: 'Biometric authentication enabled' };
+    } catch (error) {
+      const apiError = this.handleError(error);
+      return { success: false, message: apiError.message };
+    }
+  }
+
+  async enableBiometricLogin(): Promise<{ success: boolean; message?: string }> {
+    try {
+      const response = await this.api.patch('/auth/profile/', { biometric_enabled: true });
+      return { success: true, message: 'Biometric login enabled' };
+    } catch (error) {
+      const apiError = this.handleError(error);
+      return { success: false, message: apiError.message };
+    }
+  }
+
+  async disableBiometricLogin(): Promise<{ success: boolean; message?: string }> {
+    try {
+      const response = await this.api.patch('/auth/profile/', { biometric_enabled: false });
+      return { success: true, message: 'Biometric login disabled' };
+    } catch (error) {
+      const apiError = this.handleError(error);
+      return { success: false, message: apiError.message };
     }
   }
 }
