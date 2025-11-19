@@ -22,11 +22,18 @@ class User(AbstractUser):
     @property
     def followers_count(self):
         """Returns the number of users following this user."""
-        return self.followers.count()  # Uses related_name='followers' from Follow model
+        try:
+            return self.followers.count()
+        except Exception:
+            return 0
+    
     @property
     def following_count(self):
         """Returns the number of users this user is following."""
-        return self.following.count()
+        try:
+            return self.following.count()
+        except Exception:
+            return 0
     def __str__(self) -> str:
         return self.username
 
